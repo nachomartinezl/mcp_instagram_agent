@@ -316,7 +316,7 @@ class InstagramServer:
 
                 if next_button_element:
                     logger.info("Story 'Next' button found! Story viewer likely opened successfully.")
-                    await asyncio.sleep(random.uniform(0.5, 1.5)) # Let story fully render
+                    # REMOVED: await asyncio.sleep(random.uniform(0.5, 1.5)) # Let story fully render
                     screenshot_path = await self.capture_screenshot("story_opened_via_next_btn")
                     return f"Stories opened successfully (verified by next button). Screenshot saved at: {screenshot_path}"
                 else:
