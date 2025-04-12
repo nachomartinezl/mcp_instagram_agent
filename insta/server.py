@@ -264,7 +264,7 @@ class InstagramServer:
             return f"Could not find comment input area. Screenshot saved at: {screenshot_path}"
 
     async def open_stories(self) -> str:
-        """Open the first Instagram story from the feed using a stable selector."""
+        """Opens the first story from the feed, verifying by finding the 'Next' button."""
         logger.info("Attempting to open Instagram stories...")
         # --- Smart Navigation (Checks if already on feed) ---
         current_url = self.page.url
@@ -276,9 +276,6 @@ class InstagramServer:
         ):
             logger.info("Not on main feed or known non-feed page. Navigating to homepage first...")
             try:
-                # Use the existing reliable access function IF AVAILABLE, otherwise basic goto
-                # await access_instagram() # Ideally call the tool function if possible from here
-                # Fallback to basic nav:
                 await self.page.goto(
                     "https://www.instagram.com/", wait_until="domcontentloaded", timeout=30000
                 )
@@ -292,19 +289,16 @@ class InstagramServer:
                 return f"Failed to navigate to homepage to find stories: {e}"
 
         logger.info("Looking for the first story ring button using aria-label...")
-
-        # *** UPDATED RELIABLE SELECTOR ***
         # Targets the clickable div based on role, tabindex, and partial aria-label
-        stories_button_selector = (
+        first_story_button_selector = (
             'div[role="button"][aria-label^="Story by"][tabindex="0"]'
         )
-
         stories_button = await self.wait_for_selector(
-            stories_button_selector, timeout=15000
+            first_story_button_selector, timeout=15000
         )  # Wait 15 secs
 
         if stories_button:
-            logger.info("Found story button matching selector: '%s'! Clicking...", stories_button_selector)
+            logger.info("Found story button matching selector: '%s'! Clicking...", first_story_button_selector)
             try:
                 # Maybe add a tiny hover first?
                 await stories_button.hover(timeout=3000)
@@ -312,29 +306,36 @@ class InstagramServer:
                 await stories_button.click(timeout=5000)
                 logger.info("Story button clicked.")
 
-                # Wait for the story viewer modal/dialog to appear.
-                # *** UPDATED SELECTOR FOR STORY VIEWER ***
-                # Looks for a dialog containing the close button
-                story_viewer_selector = 'div[role="dialog"]:has(button[aria-label="Close"])'
-                logger.info("Waiting for story viewer dialog with selector: %s", story_viewer_selector)
+                # *** NEW: Wait for the 'Next' button inside stories ***
+                logger.info("Waiting for story 'Next' button to appear as confirmation...")
+                next_button_selector = 'button[aria-label="Next"]'
+                story_viewer_selector = 'div[role="dialog"]:has(button[aria-label="Close"])' # Keep for fallback check
 
-                await self.page.wait_for_selector(
-                    story_viewer_selector, timeout=15000, state="visible" # Keep timeout for now
-                )
-                logger.info("Story view dialog appeared using selector '%s'!", story_viewer_selector)
+                # Give it a generous timeout, as story loading can vary
+                next_button_element = await self.wait_for_selector(next_button_selector, timeout=25000)
 
-                await asyncio.sleep(random.uniform(0.5, 1.5))  # Let story load
-                screenshot_path = await self.capture_screenshot("story_opened")
-                return f"Stories opened successfully. Screenshot saved at: {screenshot_path}"
+                if next_button_element:
+                    logger.info("Story 'Next' button found! Story viewer likely opened successfully.")
+                    await asyncio.sleep(random.uniform(0.5, 1.5)) # Let story fully render
+                    screenshot_path = await self.capture_screenshot("story_opened_via_next_btn")
+                    return f"Stories opened successfully (verified by next button). Screenshot saved at: {screenshot_path}"
+                else:
+                    logger.error("Clicked story button, but the 'Next' story button did not appear within 25s.")
+                    screenshot_path = await self.capture_screenshot("story_next_button_fail")
+                    # Check for the dialog element just in case, for logging
+                    dialog_present = await self.page.query_selector(story_viewer_selector)
+                    logger.warning(f"Story viewer dialog element present after timeout? {dialog_present is not None}")
+                    return f"Clicked story button, but story viewer did not seem to load correctly (Next button missing). Screenshot: {screenshot_path}"
+
             except Exception as e:
                 logger.error("Error clicking story button or waiting for story view: %s", e, exc_info=True)
-                await self.capture_screenshot("story_click_error")
-                # Include the selector that failed in the error message
-                return f"Found story button, but failed to open view (waiting for '{story_viewer_selector}'): {e}"
+                screenshot_path = await self.capture_screenshot("story_click_or_wait_error")
+                return f"Error clicking story button or waiting for view: {e}. Screenshot: {screenshot_path}"
         else:
-            logger.warning("Could not find the story button using selector: '%s'. Did the feed load correctly?", stories_button_selector)
-            await self.capture_screenshot("story_button_not_found")
-            return "Could not find the first story element to click."
+            logger.warning("Could not find the story button using selector: '%s'. Did the feed load correctly?", first_story_button_selector)
+            screenshot_path = await self.capture_screenshot("story_button_not_found")
+            return f"Could not find the first story element to click. Screenshot: {screenshot_path}"
+
 
     async def story_interaction(self, action: str) -> str:
         """Interact with current story with natural behavior"""
