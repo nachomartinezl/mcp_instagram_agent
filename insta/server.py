@@ -338,70 +338,65 @@ class InstagramServer:
 
 
     async def story_interaction(self, action: str) -> str:
-        """Interact with current story with natural behavior"""
         logger.info("Attempting story interaction: '%s'", action)
 
         # Define valid actions and their selectors
         actions = {
-            "like": 'svg[aria-label="Like"]', # Note: This might toggle like/unlike
+            "like": 'svg[aria-label="Like"]',
             "next": 'button[aria-label="Next"]',
             "previous": 'button[aria-label="Previous"]',
-            "reply": 'textarea[placeholder^="Reply to"]', # Changed selector for reply
+            "reply": 'textarea[placeholder^="Reply to"]',
         }
 
         if action not in actions:
             logger.warning("Unknown story action requested: '%s'", action)
-            # Still capture screenshot even for unknown action attempt
             screenshot_path = await self.capture_story_screenshot()
             return f"Unknown action: {action}. Screenshot saved at: {screenshot_path}"
 
-        # Simulate viewing time only if not an immediate action like like/reply
         if action in ["next", "previous"]:
-             # Add natural viewing behavior before navigating
-             await self.simulate_story_viewing_single() # Simulate viewing current story briefly
+            await self.simulate_story_viewing_single()
 
-        # Capture the current story state *before* the action (unless it's reply)
-        screenshot_path = "N/A"
-        if action != "reply": # Don't screenshot before trying to find reply box
-             screenshot_path = await self.capture_story_screenshot()
+        if action != "reply":
+            screenshot_path = await self.capture_story_screenshot()
+        else:
+            screenshot_path = "N/A"
 
         selector = actions[action]
         logger.info("Looking for element for action '%s' with selector: %s", action, selector)
-        element = await self.wait_for_selector(selector, timeout=5000) # Shorter timeout for interaction elements
+        element = await self.page.query_selector(selector)
 
-        if element:
-            # Add random delay before action
-            delay = random.uniform(0.3, 1)
-            logger.info("Element for action '%s' found. Waiting %.2f seconds before interacting.", action, delay)
-            await asyncio.sleep(delay)
-            try:
-                if action == "reply":
-                    # Special handling for reply: just focus it? Or type something?
-                    # For now, just click (focus) it. A separate tool might be needed for actual replying.
-                    await element.click()
-                    logger.info("Reply input area focused.")
-                    # Capture screenshot *after* focusing reply
-                    screenshot_path = await self.capture_story_screenshot()
-                    return f"Story reply input focused. Screenshot saved at: {screenshot_path}"
-                else:
-                    await element.click()
-                    logger.info("Story action '%s' performed successfully.", action)
-                    # Wait a tiny bit for UI to potentially update after click (e.g., next story loads)
-                    await asyncio.sleep(random.uniform(0.2, 0.5))
-                    # Capture screenshot *after* action if not reply
-                    screenshot_path_after = await self.capture_screenshot(f"story_{action}_done")
-                    return f"Story {action} action performed successfully. Screenshot saved at: {screenshot_path_after}"
-
-            except Exception as e:
-                 logger.error("Error performing story action '%s': %s", action, e, exc_info=True)
-                 # Capture screenshot on error
-                 screenshot_path_error = await self.capture_screenshot(f"story_{action}_error")
-                 return f"Error performing {action} action: {e}. Screenshot saved at: {screenshot_path_error}"
-        else:
+        if not element:
             logger.warning("Could not find element for story action '%s'.", action)
-            # Capture screenshot on failure to find element
             screenshot_path_notfound = await self.capture_screenshot(f"story_{action}_notfound")
             return f"Could not find element for {action} action. Screenshot saved at: {screenshot_path_notfound}"
+
+        try:
+            # Check visibility
+            if not await element.is_visible():
+                logger.warning("Element for action '%s' is not visible — attempting force click.", action)
+                await element.click(force=True)
+                screenshot_path_forced = await self.capture_screenshot(f"story_{action}_forced")
+                return f"Forced click on invisible element for {action}. Screenshot saved at: {screenshot_path_forced}"
+
+            await asyncio.sleep(random.uniform(0.3, 1))
+
+            if action == "reply":
+                await element.click()
+                logger.info("Reply input area focused.")
+                screenshot_path = await self.capture_story_screenshot()
+                return f"Story reply input focused. Screenshot saved at: {screenshot_path}"
+            else:
+                await element.click()
+                logger.info("Story action '%s' performed successfully.", action)
+                await asyncio.sleep(random.uniform(0.2, 0.5))
+                screenshot_path_after = await self.capture_screenshot(f"story_{action}_done")
+                return f"Story {action} action performed successfully. Screenshot saved at: {screenshot_path_after}"
+
+        except Exception as e:
+            logger.error("Error performing story action '%s': %s", action, e, exc_info=True)
+            screenshot_path_error = await self.capture_screenshot(f"story_{action}_error")
+            return f"Error performing {action} action: {e}. Screenshot saved at: {screenshot_path_error}"
+
 
 
     async def scroll_feed(self, amount: int = 1) -> str:
@@ -533,6 +528,9 @@ class InstagramServer:
             # Randomly choose an action
             action = random.choice(actions)
             logger.debug("Chosen action for story %d: '%s'", i+1, action)
+
+            await self.page.keyboard.press("ArrowRight")
+            await asyncio.sleep(1)
 
             # Perform the chosen action
             interaction_result = await self.story_interaction(action)
@@ -748,12 +746,14 @@ async def interact_with_story(action: str) -> str:
     """Interact with current story. Actions: 'like', 'next', 'previous', 'reply'"""
     logger.info("Tool 'interact_with_story' called with action: %s", action)
     await instagram.init()
-    # Check if stories are actually open first? Might be safer.
-    story_viewer_selector = 'div[role="dialog"]:has(button[aria-label="Close"])'
-    story_viewer = await instagram.page.query_selector(story_viewer_selector)
+
+    # More robust check: look for any open dialog (where stories live)
+    story_viewer = await instagram.page.query_selector('div[role="dialog"]')
     if not story_viewer:
-        logger.warning("Attempted story interaction ('%s'), but story viewer doesn't seem to be open.", action)
-        return "Cannot interact with story: Story viewer is not open."
+        logger.warning("Attempted story interaction ('%s'), but no <div role='dialog'> found. Viewer may not be open.", action)
+        return "Cannot interact with story: Story viewer is not open or not detected properly."
+    else:
+        logger.info("Story viewer detected (role='dialog'). Proceeding with interaction.")
 
     result = await instagram.story_interaction(action)
     logger.info("Tool 'interact_with_story' finished. Result: %s", result)
