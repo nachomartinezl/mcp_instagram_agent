@@ -256,10 +256,12 @@ class InstagramServer:
                 # Common selectors: 'div[role="dialog"]', 'section > div[role="dialog"]'
                 # Let's try a generic one, refine if needed by inspecting the story view
                 print("Waiting for story viewer dialog...")
+                # *** UPDATED SELECTOR FOR STORY VIEWER ***
+                story_viewer_selector = "section > div[role='dialog']" # More specific: dialog inside a section
                 await self.page.wait_for_selector(
-                    'div[role="dialog"]', timeout=15000, state="visible"
+                    story_viewer_selector, timeout=15000, state="visible" # Keep timeout for now
                 )
-                print("Story view dialog appeared!")
+                print(f"Story view dialog appeared using selector '{story_viewer_selector}'!")
 
                 await asyncio.sleep(random.uniform(0.5, 1.5))  # Let story load
                 screenshot_path = await self.capture_screenshot("story_opened")
@@ -267,7 +269,8 @@ class InstagramServer:
             except Exception as e:
                 print(f"Error clicking story button or waiting for story view: {e}")
                 await self.capture_screenshot("story_click_error")
-                return f"Found story button, but failed to open view: {e}"
+                # Include the selector that failed in the error message
+                return f"Found story button, but failed to open view (waiting for '{story_viewer_selector}'): {e}"
         else:
             print(
                 f"Could not find the story button using selector: '{stories_button_selector}'. Did the feed load correctly?"
