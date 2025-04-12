@@ -714,7 +714,7 @@ async def comment_on_instagram_post(post_url: str, comment: str) -> str:
 
 @mcp.tool()
 async def view_instagram_stories() -> str:
-    """Open and view Instagram stories"""
+    """Open and view Instagram stories, leaving the viewer open."""
     logger.info("Tool 'view_instagram_stories' called.")
     await instagram.init()
     result = await instagram.open_stories()
@@ -722,20 +722,25 @@ async def view_instagram_stories() -> str:
     if "successfully" in result.lower():
         logger.info("Stories opened, now simulating viewing...")
         await instagram.simulate_story_viewing(3, 7) # Simulate viewing after opening
-        # Close stories after viewing simulation
-        logger.info("Closing stories after viewing simulation.")
-        exit_button = await instagram.wait_for_selector('button[aria-label="Close"]', timeout=5000)
-        if exit_button:
-            try:
-                await exit_button.click()
-                logger.info("Story viewer closed after simulation.")
-            except Exception as e:
-                 logger.warning("Could not click story viewer close button after simulation: %s", e)
-        else:
-            logger.warning("Could not find story viewer close button after simulation.")
+        # REMOVED: Closing stories after viewing simulation to allow further interaction
+        # logger.info("Closing stories after viewing simulation.")
+        # exit_button = await instagram.wait_for_selector('button[aria-label="Close"]', timeout=5000)
+        # if exit_button:
+        #     try:
+        #         await exit_button.click()
+        #         logger.info("Story viewer closed after simulation.")
+        #     except Exception as e:
+        #          logger.warning("Could not click story viewer close button after simulation: %s", e)
+        # else:
+        #     logger.warning("Could not find story viewer close button after simulation.")
+        logger.info("Finished story viewing simulation. Story viewer remains open.")
 
     logger.info("Tool 'view_instagram_stories' finished. Result: %s", result)
-    return result
+    # Modify the return message slightly to indicate the viewer is left open
+    if "successfully" in result.lower():
+        return f"{result} Viewer left open after simulation."
+    else:
+        return result
 
 
 @mcp.tool()
