@@ -7,6 +7,8 @@ import json
 from datetime import datetime
 import random
 import logging
+import re # Added for filename sanitization
+from urllib.parse import urlparse # Added for URL parsing
 
 # --- Set up logging ---
 log_file = "instagram_server.log"
@@ -29,12 +31,14 @@ class InstagramServer:
         self.context = None
         self.page = None
         self.screenshots_dir = "instagram_screenshots"
+        self.snapshots_dir = "page_snapshots" # Added default snapshot directory
         self.cookies_path = os.path.join(
             os.path.dirname(__file__), "cookies", "instagram.json"
         )
-        # Create screenshots directory if it doesn't exist
+        # Create directories if they don't exist
         os.makedirs(self.screenshots_dir, exist_ok=True)
-        logger.info("InstagramServer instance created. Screenshots dir: %s", self.screenshots_dir)
+        os.makedirs(self.snapshots_dir, exist_ok=True) # Create snapshots dir
+        logger.info("InstagramServer instance created. Screenshots dir: %s, Snapshots dir: %s", self.screenshots_dir, self.snapshots_dir)
 
         # --- Centralized Selectors ---
         self.selectors = {
@@ -70,26 +74,87 @@ class InstagramServer:
         logger.warning("Cookie file not found at %s", self.cookies_path)
         return False
 
-    async def snapshot_page_tree(self, output_path="page_tree.json"):
-        """Take an accessibility snapshot of the *current* page and save it to JSON."""
+    def _sanitize_filename(self, name: str) -> str:
+        """Removes or replaces characters unsafe for filenames."""
+        # Remove leading/trailing whitespace
+        name = name.strip()
+        # Replace slashes and backslashes with underscores
+        name = name.replace('/', '_').replace('\\', '_')
+        # Remove characters that are problematic in filenames across OSes
+        name = re.sub(r'[<>:"|?*]', '', name)
+        # Replace multiple consecutive underscores with a single one
+        name = re.sub(r'_+', '_', name)
+        # Remove leading/trailing underscores that might result from replacements
+        name = name.strip('_')
+        # Limit length if necessary (optional)
+        # max_len = 50
+        # if len(name) > max_len:
+        #     name = name[:max_len]
+        return name or "unknown" # Return 'unknown' if sanitization results in empty string
+
+    async def snapshot_page_tree(self, output_dir: Optional[str] = None) -> Optional[str]:
+        """
+        Take an accessibility snapshot of the *current* page and save it to a dynamically named JSON file.
+
+        Args:
+            output_dir: The directory to save the snapshot in. Defaults to self.snapshots_dir.
+
+        Returns:
+            The full path to the saved snapshot file, or None if failed.
+        """
         if not self.page:
             logger.error("Page is not initialized. Run `init()` first.")
-            return False
+            return None
 
-        current_url = self.page.url # Get current URL for logging
-        logger.info("Taking accessibility snapshot of current page: %s", current_url)
+        target_dir = output_dir or self.snapshots_dir
+        os.makedirs(target_dir, exist_ok=True) # Ensure directory exists
 
+        current_url = self.page.url # Get current URL for logging and filename
+        logger.info("Attempting to take accessibility snapshot of current page: %s", current_url)
+
+        # --- Generate dynamic filename ---
+        identifier = "unknown_page" # Default identifier
+        try:
+            parsed_url = urlparse(current_url)
+            path_parts = [part for part in parsed_url.path.split('/') if part] # Split path and remove empty parts
+
+            if not path_parts: # Root path "/" -> main feed
+                identifier = "feed"
+            elif path_parts[0] == 'p' and len(path_parts) > 1:
+                identifier = f"post_{path_parts[1]}"
+            elif path_parts[0] == 'stories' and len(path_parts) > 1:
+                identifier = f"stories_{path_parts[1]}"
+            elif path_parts[0] == 'explore':
+                identifier = "explore"
+            elif path_parts[0] == 'direct':
+                 identifier = "direct"
+            elif len(path_parts) == 1: # Likely a profile page, e.g., /username/
+                identifier = f"profile_{path_parts[0]}"
+            else: # Use first part of path as a fallback identifier
+                identifier = path_parts[0]
+
+        except Exception as parse_e:
+            logger.warning("Could not parse URL '%s' for filename identifier: %s. Using default.", current_url, parse_e)
+            identifier = "parse_error"
+
+        sanitized_identifier = self._sanitize_filename(identifier)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{sanitized_identifier}_{timestamp}.json"
+        full_output_path = os.path.join(target_dir, filename)
+        # ---------------------------------
+
+        logger.info("Saving snapshot to: %s", full_output_path)
         try:
             snapshot = await self.page.accessibility.snapshot()
 
-            with open(output_path, "w", encoding="utf-8") as f:
+            with open(full_output_path, "w", encoding="utf-8") as f:
                 json.dump(snapshot, f, indent=2, ensure_ascii=False)
 
-            logger.info("✅ Accessibility snapshot saved to %s", output_path)
-            return True
+            logger.info("✅ Accessibility snapshot saved successfully.")
+            return full_output_path # Return the actual path used
         except Exception as e:
-            logger.error("Failed to take accessibility snapshot for page %s: %s", current_url, e, exc_info=True)
-            return False
+            logger.error("Failed to take or save accessibility snapshot to %s: %s", full_output_path, e, exc_info=True)
+            return None
 
 
     async def init(self):
@@ -905,18 +970,21 @@ async def scroll_instagram_feed(scrolls: int = 1) -> str:
 
 @mcp.tool()
 async def snapshot_instagram_page_tree() -> str:
-    """Takes an accessibility snapshot of the *current* Instagram page and saves it to 'page_tree.json'."""
+    """
+    Takes an accessibility snapshot of the *current* Instagram page and saves it
+    to a dynamically named file (e.g., page_snapshots/feed_timestamp.json) in the 'page_snapshots' directory.
+    """
     logger.info("Tool 'snapshot_instagram_page_tree' called.")
     await instagram.init() # Ensure browser is ready
 
-    # Define the default output path here, as the tool doesn't take it as input
-    output_path = "page_tree.json"
     current_url = instagram.page.url if instagram.page else "Unknown"
 
     try:
-        success = await instagram.snapshot_page_tree(output_path=output_path)
-        if success:
-            result = f"Successfully saved accessibility snapshot of current page ({current_url}) to {output_path}."
+        # Call the method which now handles dynamic naming and returns the full path
+        snapshot_path = await instagram.snapshot_page_tree() # Uses default output dir
+
+        if snapshot_path:
+            result = f"Successfully saved accessibility snapshot of current page ({current_url}) to {snapshot_path}."
             logger.info(result)
             return result
         else:
