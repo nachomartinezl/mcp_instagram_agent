@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP
-from playwright.async_api import async_playwright, Page, ElementHandle # Added ElementHandle
+from playwright.async_api import async_playwright, Page, ElementHandle, Locator  # Added ElementHandle
 import asyncio
 from typing import Optional
 import os
