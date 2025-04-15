@@ -69,6 +69,26 @@ class InstagramServer:
                 return False
         logger.warning("Cookie file not found at %s", self.cookies_path)
         return False
+    
+    async def snapshot_page_tree(self, output_path="page_tree.json", url="https://www.instagram.com/"):
+        """Open Instagram using existing session and save accessibility tree to JSON."""
+        if not self.page:
+            logger.error("Page is not initialized. Run `init()` first.")
+            return False
+
+        logger.info("Navigating to %s...", url)
+        await self.page.goto(url, timeout=60000)
+        await self.page.wait_for_timeout(5000)
+
+        logger.info("Taking accessibility snapshot...")
+        snapshot = await self.page.accessibility.snapshot()
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, indent=2, ensure_ascii=False)
+
+        logger.info("✅ Accessibility snapshot saved to %s", output_path)
+        return True
+
 
     async def init(self):
         if self.browser:
