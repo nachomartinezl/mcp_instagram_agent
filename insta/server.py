@@ -69,7 +69,7 @@ class InstagramServer:
                 return False
         logger.warning("Cookie file not found at %s", self.cookies_path)
         return False
-    
+
     async def snapshot_page_tree(self, output_path="page_tree.json", url="https://www.instagram.com/"):
         """Open Instagram using existing session and save accessibility tree to JSON."""
         if not self.page:
@@ -900,6 +900,30 @@ async def scroll_instagram_feed(scrolls: int = 1) -> str:
     result = await instagram.scroll_feed(scrolls)
     logger.info("Tool 'scroll_instagram_feed' finished. Result: %s", result)
     return result
+
+@mcp.tool()
+async def snapshot_instagram_page_tree(url: str = "https://www.instagram.com/") -> str:
+    """Takes an accessibility snapshot of the specified Instagram page (default: homepage) and saves it to 'page_tree.json'."""
+    logger.info("Tool 'snapshot_instagram_page_tree' called for URL: %s", url)
+    await instagram.init() # Ensure browser is ready
+
+    # Define the default output path here, as the tool doesn't take it as input
+    output_path = "page_tree.json"
+
+    try:
+        success = await instagram.snapshot_page_tree(output_path=output_path, url=url)
+        if success:
+            result = f"Successfully saved accessibility snapshot of {url} to {output_path}."
+            logger.info(result)
+            return result
+        else:
+            # The method already logs errors, but we can add context here
+            result = f"Failed to take accessibility snapshot for {url}. Check logs for details."
+            logger.warning(result) # Use warning as the method logs the specific error
+            return result
+    except Exception as e:
+        logger.error("Unexpected error in 'snapshot_instagram_page_tree' tool: %s", e, exc_info=True)
+        return f"An unexpected error occurred while trying to take the snapshot: {e}"
 
 
 @mcp.tool()
