@@ -284,6 +284,3 @@ if __name__ == "__main__":
         except RuntimeError as e:
             logger.info(f"Could not run final cleanup (loop likely stopped): {e}")
         logger.info("Instagram MCP server stopped.")
-
-if __name__ == "__main__":
-    mcp.run(transport="stdio")
