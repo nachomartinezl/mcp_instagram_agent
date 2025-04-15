@@ -70,24 +70,26 @@ class InstagramServer:
         logger.warning("Cookie file not found at %s", self.cookies_path)
         return False
 
-    async def snapshot_page_tree(self, output_path="page_tree.json", url="https://www.instagram.com/"):
-        """Open Instagram using existing session and save accessibility tree to JSON."""
+    async def snapshot_page_tree(self, output_path="page_tree.json"):
+        """Take an accessibility snapshot of the *current* page and save it to JSON."""
         if not self.page:
             logger.error("Page is not initialized. Run `init()` first.")
             return False
 
-        logger.info("Navigating to %s...", url)
-        await self.page.goto(url, timeout=60000)
-        await self.page.wait_for_timeout(5000)
+        current_url = self.page.url # Get current URL for logging
+        logger.info("Taking accessibility snapshot of current page: %s", current_url)
 
-        logger.info("Taking accessibility snapshot...")
-        snapshot = await self.page.accessibility.snapshot()
+        try:
+            snapshot = await self.page.accessibility.snapshot()
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(snapshot, f, indent=2, ensure_ascii=False)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(snapshot, f, indent=2, ensure_ascii=False)
 
-        logger.info("✅ Accessibility snapshot saved to %s", output_path)
-        return True
+            logger.info("✅ Accessibility snapshot saved to %s", output_path)
+            return True
+        except Exception as e:
+            logger.error("Failed to take accessibility snapshot for page %s: %s", current_url, e, exc_info=True)
+            return False
 
 
     async def init(self):
@@ -902,23 +904,24 @@ async def scroll_instagram_feed(scrolls: int = 1) -> str:
     return result
 
 @mcp.tool()
-async def snapshot_instagram_page_tree(url: str = "https://www.instagram.com/") -> str:
-    """Takes an accessibility snapshot of the specified Instagram page (default: homepage) and saves it to 'page_tree.json'."""
-    logger.info("Tool 'snapshot_instagram_page_tree' called for URL: %s", url)
+async def snapshot_instagram_page_tree() -> str:
+    """Takes an accessibility snapshot of the *current* Instagram page and saves it to 'page_tree.json'."""
+    logger.info("Tool 'snapshot_instagram_page_tree' called.")
     await instagram.init() # Ensure browser is ready
 
     # Define the default output path here, as the tool doesn't take it as input
     output_path = "page_tree.json"
+    current_url = instagram.page.url if instagram.page else "Unknown"
 
     try:
-        success = await instagram.snapshot_page_tree(output_path=output_path, url=url)
+        success = await instagram.snapshot_page_tree(output_path=output_path)
         if success:
-            result = f"Successfully saved accessibility snapshot of {url} to {output_path}."
+            result = f"Successfully saved accessibility snapshot of current page ({current_url}) to {output_path}."
             logger.info(result)
             return result
         else:
             # The method already logs errors, but we can add context here
-            result = f"Failed to take accessibility snapshot for {url}. Check logs for details."
+            result = f"Failed to take accessibility snapshot for current page ({current_url}). Check logs for details."
             logger.warning(result) # Use warning as the method logs the specific error
             return result
     except Exception as e:
