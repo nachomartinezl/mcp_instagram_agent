@@ -16,3 +16,8 @@ insta/cookies/
 
 servers/
 .aider*
+
+instagram_screenshots
+page_snapshots
+*.png
+*.json
