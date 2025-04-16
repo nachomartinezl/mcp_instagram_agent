@@ -59,7 +59,7 @@ class InstagramServer:
                 'like': 'div[role="dialog"] svg[aria-label="Like"]',
                 'unlike': 'div[role="dialog"] svg[aria-label="Unlike"]',
                 'reply_input': 'div[role="dialog"] textarea[placeholder^="Reply to"]',
-                'close': 'div[role="dialog"] button[aria-label="Close"]',
+                'close': 'internal:role=button[name="Close"i][exact=true]', # Updated selector
                 'viewer': 'div[role="dialog"]'
             }
         }
@@ -193,7 +193,7 @@ class InstagramServer:
         post_like_btn = page.locator(self.selectors["post"]["like"])
         post_comment_input = page.locator(self.selectors["post"]["comment_input"])
         # Wait for either the like button OR the comment input to be visible
-        await post_like_btn.or_(post_comment_input).first.wait_for(state="visible", timeout=30000)
+        await post_like_btn.or_(post_comment_input).first.wait_for(state="visible", timeout=30000) # Already uses "visible"
         await asyncio.sleep(0.5)  # Short stabilization period
         logger.debug("Post content stabilized.")
 
