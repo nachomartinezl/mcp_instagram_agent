@@ -34,8 +34,6 @@ class InstagramServer:
             os.path.dirname(__file__), "cookies", "instagram.json"
         )
         logger.info("InstagramServer instance created.")
-
-        # --- Centralized Selectors (Refined & Nested) ---
         self.selectors = {
             'feed': {
                 'content': "main[role='main']",
@@ -65,7 +63,6 @@ class InstagramServer:
                 'viewer': 'div[role="dialog"]'
             }
         }
-        # -----------------------------
 
     def _ensure_page(self) -> Page:
         if not self.page:
@@ -94,9 +91,6 @@ class InstagramServer:
                 return False
         logger.warning("Cookie file not found at %s", self.cookies_path)
         return False
-
-    # Removed _sanitize_filename method
-    # Removed snapshot_page_tree method
 
     async def init(self):
         # This method remains largely the same, just logging adjusted slightly
@@ -190,15 +184,6 @@ class InstagramServer:
             logger.info("Browser closed.")
         else:
             logger.info("Browser already closed or not initialized.")
-
-    # --- Removed Core Interaction Helpers ---
-    # Removed _get_locator
-    # Removed wait_for_locator
-    # Removed click_element
-    # Removed type_into_element
-    # Removed capture_screenshot
-
-    # --- Removed simulate_human_scroll method ---
 
     # --- Feed Actions ---
 
@@ -312,9 +297,6 @@ class InstagramServer:
                 logger.info("Navigating to post URL: %s", post_url)
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
                 logger.info("Page loaded for post: %s", post_url)
-
-            # Removed scroll simulation call
-            # await self.simulate_human_scroll(1, 1) # REMOVED
 
             # Optional click on comment icon (attempt, but don't fail)
             try:
