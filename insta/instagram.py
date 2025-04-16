@@ -44,8 +44,8 @@ class InstagramServer:
                 }
             },
             'post': {
-                'like': 'article div[role="button"]:has(svg[aria-label="Like"]), main div[role="button"]:has(svg[aria-label="Like"])',
-                'unlike': 'article div[role="button"]:has(svg[aria-label="Unlike"]), main div[role="button"]:has(svg[aria-label="Unlike"])',
+                'like': 'internal:role=button[name="Like"i][exact=true]', # Updated selector
+                'unlike': 'internal:role=button[name="Unlike"i][exact=true]', # Updated selector
                 'comment_button': 'article div[role="button"]:has(svg[aria-label="Comment"]), main div[role="button"]:has(svg[aria-label="Comment"])',
                 'comment_input': 'textarea[aria-label="Add a comment…"]',
                 'submit': 'div[role="button"]:text-is("Post")'
@@ -229,58 +229,59 @@ class InstagramServer:
     # --- Post Actions ---
 
     async def like_post(self, post_url: Optional[str] = None) -> str:
+        # Updated method based on user request
         page = self._ensure_page()
-        action_description = (
-            f"like post at {post_url}" if post_url else "like current post"
-        )
+        action_description = f"like post at {post_url}" if post_url else "like current post"
         logger.info(f"Attempting to {action_description}...")
 
         try:
             if post_url:
                 logger.info("Navigating to post URL: %s", post_url)
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
-                logger.info("Page loaded for post: %s", post_url)
 
-            like_btn = page.locator(self.selectors["post"]["like"])
-            unlike_btn = page.locator(self.selectors["post"]["unlike"])
+            # Use get_by_role as requested
+            like_btn = page.get_by_role("button", name="Like", exact=True)
+            unlike_btn = page.get_by_role("button", name="Unlike", exact=True)
 
-            # Check if already liked (using is_visible with short timeout)
-            if await unlike_btn.is_visible(timeout=1500):
-                logger.warning("Post appears to be already liked (Unlike button found).")
+            # Check if already liked using .first and is_visible
+            if await unlike_btn.first.is_visible(timeout=2000):
+                logger.info("Post already liked")
                 return "Post already liked."
 
-            logger.info("Looking for like button...")
-            await like_btn.wait_for(state="visible", timeout=10000)
+            # Wait for first like button
+            logger.info("Waiting for like button...")
+            await like_btn.first.wait_for(state="visible", timeout=10000)
 
-            # Add hover before click
-            logger.debug("Hovering over like button...")
-            await like_btn.hover()
-            await asyncio.sleep(0.3)  # Short pause for UI stabilization
+            # Hover and click with precise positioning
+            logger.debug("Hovering and clicking like button...")
+            await like_btn.first.hover()
+            await asyncio.sleep(0.3)
 
-            logger.debug("Clicking like button...")
-            await like_btn.click(timeout=5000)
+            # Click with position and force to avoid overlays
+            await like_btn.first.click(
+                position={"x": 5, "y": 5},
+                timeout=5000,
+                force=True # Added force=True
+            )
 
-            # Wait for unlike button to appear as confirmation
-            logger.debug("Waiting for unlike button to confirm like...")
-            await unlike_btn.wait_for(state="visible", timeout=3000)
-            logger.info("Post liked successfully.")
+            # Verify with unlike button
+            logger.debug("Verifying like action...")
+            await unlike_btn.first.wait_for(state="visible", timeout=3000)
+            logger.info("Post liked successfully")
             return "Post liked successfully."
 
-        except PlaywrightTimeoutError as e:
-            logger.error("Timeout error during like action: %s", e)
-            # Check if it might have been liked anyway but confirmation failed
-            try:
-                unlike_btn = page.locator(self.selectors["post"]["unlike"])
-                if await unlike_btn.is_visible(timeout=500):
-                     logger.warning("Like confirmation timed out, but unlike button IS visible now.")
-                     return "Post likely liked, but confirmation timed out."
-            except: pass # Ignore errors in this secondary check
-            # Removed screenshot call
-            return f"Error: Timeout during like action - {e}"
         except Exception as e:
-            logger.error("Error liking post: %s", e, exc_info=True)
-            # Removed screenshot call
-            return f"Error: Could not like post - {e}"
+            logger.error("Like failed. Current URL: %s", page.url)
+            # Diagnostic screenshot
+            screenshot_path = "like_error.png"
+            try:
+                await page.screenshot(path=screenshot_path, full_page=True)
+                logger.info(f"Screenshot saved to {screenshot_path}")
+            except Exception as ss_e:
+                logger.error(f"Failed to save screenshot: {ss_e}")
+            logger.error("Full error details: %s", str(e), exc_info=True)
+            return f"Like failed: {str(e)}"
+
 
     async def comment_on_post(
         self, comment_text: str, post_url: Optional[str] = None
