@@ -42,12 +42,13 @@ async def access_instagram() -> str:
         except Exception: # Catch timeout or other errors during wait_for
             logger.info("Main content not found quickly. Attempting page refresh...")
             # No screenshot here
+            # Use domcontentloaded for reload
             await page.reload(wait_until="domcontentloaded", timeout=45000)
             logger.info("Page reloaded. Waiting for main content again...")
 
             try:
-                # Wait again after reload
-                await main_content.wait_for(state="visible", timeout=30000)
+                # Wait again for main feed content after reload
+                await page.locator(main_content_selector).wait_for(state="visible", timeout=30000)
                 logger.info("Refresh successful, main content loaded!")
                 await asyncio.sleep(random.uniform(0.5, 1.5)) # Keep small delay
                 return "Opened Instagram homepage successfully after refresh."

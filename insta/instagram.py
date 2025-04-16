@@ -185,6 +185,19 @@ class InstagramServer:
         else:
             logger.info("Browser already closed or not initialized.")
 
+    # --- Helper Methods ---
+
+    async def _wait_for_post_content(self, page: Page) -> None:
+        """Wait for critical post elements to be present."""
+        logger.debug("Waiting for post content to stabilize (like button or comment input)...")
+        post_like_btn = page.locator(self.selectors["post"]["like"])
+        post_comment_input = page.locator(self.selectors["post"]["comment_input"])
+        # Wait for either the like button OR the comment input to be visible
+        await post_like_btn.or_(post_comment_input).first.wait_for(state="visible", timeout=30000)
+        await asyncio.sleep(0.5)  # Short stabilization period
+        logger.debug("Post content stabilized.")
+
+
     # --- Feed Actions ---
 
     async def open_first_post_from_feed(self) -> str:
@@ -215,17 +228,8 @@ class InstagramServer:
             await go_to_post.click(timeout=5000)
 
             # --- MODIFIED WAIT LOGIC ---
-            logger.debug("Waiting for post content to load...")
-            # Wait for either the like button or comment section to appear
-            post_like_btn = page.locator(self.selectors["post"]["like"])
-            post_comment_section = page.locator(self.selectors["post"]["comment_input"])
-
-            try:
-                await post_like_btn.first.wait_for(state="visible", timeout=30000)  # 30s timeout
-            except PlaywrightTimeoutError:
-                # Fallback check for comment section
-                logger.warning("Like button not found within 30s, checking comment section...")
-                await post_comment_section.wait_for(state="visible", timeout=15000) # 15s fallback timeout
+            logger.debug("Waiting for post content to load after clicking 'Go to post'...")
+            await self._wait_for_post_content(page) # Use helper method
             # --- END MODIFIED WAIT LOGIC ---
 
             logger.info("Post content loaded successfully. Current URL: %s", page.url)
@@ -250,7 +254,9 @@ class InstagramServer:
         try:
             if post_url:
                 logger.info("Navigating to post URL: %s", post_url)
-                await page.goto(post_url, wait_until="networkidle", timeout=45000)
+                # Use domcontentloaded and helper wait
+                await page.goto(post_url, wait_until="domcontentloaded", timeout=45000)
+                await self._wait_for_post_content(page)
 
             # Use get_by_role as requested
             like_btn = page.get_by_role("button", name="Like", exact=True)
@@ -309,7 +315,9 @@ class InstagramServer:
         try:
             if post_url:
                 logger.info("Navigating to post URL: %s", post_url)
-                await page.goto(post_url, wait_until="networkidle", timeout=45000)
+                # Use domcontentloaded and helper wait
+                await page.goto(post_url, wait_until="domcontentloaded", timeout=45000)
+                await self._wait_for_post_content(page)
                 logger.info("Page loaded for post: %s", post_url)
 
             # Optional click on comment icon (attempt, but don't fail)
@@ -364,7 +372,10 @@ class InstagramServer:
         if not is_on_feed:
             logger.info("Not on main feed, navigating to Instagram base URL.")
             try:
-                await page.goto("https://www.instagram.com/", wait_until="networkidle", timeout=30000)
+                # Use domcontentloaded and wait for feed content
+                await page.goto("https://www.instagram.com/", wait_until="domcontentloaded", timeout=30000)
+                await page.locator(self.selectors["feed"]["content"]).wait_for(state="visible", timeout=15000)
+                logger.info("Navigated to feed and confirmed content.")
             except Exception as nav_e:
                 logger.error("Failed to navigate to feed: %s", nav_e)
                 return f"Error: Failed to navigate to feed - {nav_e}"
