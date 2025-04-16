@@ -200,30 +200,7 @@ class InstagramServer:
     # Removed type_into_element
     # Removed capture_screenshot
 
-    async def simulate_human_scroll(self, min_scrolls: int = 1, max_scrolls: int = 3):
-        # Method looks fine, uses page directly. Kept random import for this.
-        page = self._ensure_page()
-        num_scrolls = random.randint(min_scrolls, max_scrolls)
-        logger.info("Simulating human scroll: %d scrolls.", num_scrolls)
-        try:
-            for i in range(num_scrolls):
-                scroll_max = await page.evaluate("window.innerHeight")
-                scroll_amount = random.randint(
-                    100, scroll_max if scroll_max > 100 else 500
-                )
-                await page.evaluate(f"window.scrollBy(0, {scroll_amount})")
-                pause_duration = random.uniform(0.5, 1.5)
-                logger.debug(
-                    "Scroll %d/%d: Scrolled by %dpx, pausing for %.2fs",
-                    i + 1,
-                    num_scrolls,
-                    scroll_amount,
-                    pause_duration,
-                )
-                await asyncio.sleep(pause_duration) # Kept asyncio import
-            logger.info("Finished simulating human scroll.")
-        except Exception as e:
-            logger.error("Error during human scroll simulation: %s", e, exc_info=True)
+    # --- Removed simulate_human_scroll method ---
 
     # --- Feed Actions ---
 
@@ -282,7 +259,8 @@ class InstagramServer:
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
                 logger.info("Page loaded for post: %s", post_url)
 
-            await self.simulate_human_scroll(1, 1) # Keep scroll simulation
+            # Removed scroll simulation call
+            # await self.simulate_human_scroll(1, 1) # REMOVED
 
             like_btn = page.locator(self.selectors["post_like_button"])
             unlike_btn = page.locator(self.selectors["post_unlike_button"])
@@ -335,7 +313,8 @@ class InstagramServer:
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
                 logger.info("Page loaded for post: %s", post_url)
 
-            await self.simulate_human_scroll(1, 1) # Keep scroll simulation
+            # Removed scroll simulation call
+            # await self.simulate_human_scroll(1, 1) # REMOVED
 
             # Optional click on comment icon (attempt, but don't fail)
             try:

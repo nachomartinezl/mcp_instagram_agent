@@ -172,35 +172,7 @@ async def close_current_story_viewer() -> str:
     return result
 
 
-@mcp.tool()
-async def scroll_instagram_feed(scrolls: int = 1) -> str:
-    """Scrolls down in the Instagram feed a specified number of times (approx 1-3 times by default)."""
-    actual_scrolls = max(1, min(scrolls, 5))  # Example clamping
-    logger.info(
-        "Tool 'scroll_instagram_feed' called with scrolls: %d (using %d)",
-        scrolls,
-        actual_scrolls,
-    )
-    await instagram.init()
-
-    if await instagram._check_story_viewer_open():
-        logger.warning(
-            "Attempted to scroll feed while story viewer is open. Closing viewer first."
-        )
-        close_result = await instagram.close_story_viewer()
-        logger.info("Close story viewer result: %s", close_result)
-        await asyncio.sleep(0.5)
-
-    try:
-        await instagram.simulate_human_scroll(
-            min_scrolls=actual_scrolls, max_scrolls=actual_scrolls
-        )
-        result = f"Simulated {actual_scrolls} scroll(s) on the feed."
-        logger.info("Tool 'scroll_instagram_feed' finished. Result: %s", result)
-        return result
-    except Exception as e:
-        logger.error("Error during scroll simulation tool call: %s", e, exc_info=True)
-        return f"Error during scroll: {e}"
+# Removed scroll_instagram_feed tool
 
 
 # Removed snapshot_instagram_page_tree tool
