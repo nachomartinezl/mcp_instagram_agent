@@ -35,30 +35,35 @@ class InstagramServer:
         )
         logger.info("InstagramServer instance created.")
 
-        # --- Centralized Selectors (Refined) ---
+        # --- Centralized Selectors (Refined & Nested) ---
         self.selectors = {
-            # --- Feed ---
-            "main_feed_content": "main[role='main']",
-            "feed_first_post_article": "main[role='main'] article:first-of-type",
-            "feed_post_more_options_button_relative": 'internal:role=button[name="More options"i]',
-            "modal_go_to_post_button": 'button:has-text("Go to post")',
-            # --- Post View ---
-            "post_like_button": 'article div[role="button"]:has(svg[aria-label="Like"]), main div[role="button"]:has(svg[aria-label="Like"])',
-            "post_unlike_button": 'article div[role="button"]:has(svg[aria-label="Unlike"]), main div[role="button"]:has(svg[aria-label="Unlike"])',
-            "post_comment_button": 'article div[role="button"]:has(svg[aria-label="Comment"]), main div[role="button"]:has(svg[aria-label="Comment"])',
-            "post_comment_input": 'textarea[aria-label="Add a comment…"]',
-            "post_comment_submit_button": 'div[role="button"]:text-is("Post")',
-            # --- Stories ---
-            "first_story_button": 'div[role="button"][aria-label^="Story by"][tabindex="0"]',
-            "story_next_button": 'div[role="dialog"] button[aria-label="Next"]',
-            "story_previous_button": 'div[role="dialog"] button[aria-label="Previous"]',
-            "story_pause_button": 'div[role="dialog"] div[role="button"]:has(svg[aria-label="Pause"])',
-            "story_play_button": 'div[role="dialog"] div[role="button"]:has(svg[aria-label="Play"])',
-            "story_like_button": 'div[role="dialog"] svg[aria-label="Like"]',
-            "story_unlike_button": 'div[role="dialog"] svg[aria-label="Unlike"]',
-            "story_reply_input": 'div[role="dialog"] textarea[placeholder^="Reply to"]',
-            "story_close_button": 'div[role="dialog"] button[aria-label="Close"]',
-            "story_viewer_dialog": 'div[role="dialog"]',
+            'feed': {
+                'content': "main[role='main']",
+                'first_article': "main[role='main'] article:first-of-type",
+                'more_options': 'internal:role=button[name="More options"i]',
+                'modal': {
+                    'go_to_post': 'button:has-text("Go to post")'
+                }
+            },
+            'post': {
+                'like': 'article div[role="button"]:has(svg[aria-label="Like"]), main div[role="button"]:has(svg[aria-label="Like"])',
+                'unlike': 'article div[role="button"]:has(svg[aria-label="Unlike"]), main div[role="button"]:has(svg[aria-label="Unlike"])',
+                'comment_button': 'article div[role="button"]:has(svg[aria-label="Comment"]), main div[role="button"]:has(svg[aria-label="Comment"])',
+                'comment_input': 'textarea[aria-label="Add a comment…"]',
+                'submit': 'div[role="button"]:text-is("Post")'
+            },
+            'stories': {
+                'first': 'div[role="button"][aria-label^="Story by"][tabindex="0"]',
+                'next': 'div[role="dialog"] button[aria-label="Next"]',
+                'previous': 'div[role="dialog"] button[aria-label="Previous"]',
+                'pause': 'div[role="dialog"] div[role="button"]:has(svg[aria-label="Pause"])',
+                'play': 'div[role="dialog"] div[role="button"]:has(svg[aria-label="Play"])',
+                'like': 'div[role="dialog"] svg[aria-label="Like"]',
+                'unlike': 'div[role="dialog"] svg[aria-label="Unlike"]',
+                'reply_input': 'div[role="dialog"] textarea[placeholder^="Reply to"]',
+                'close': 'div[role="dialog"] button[aria-label="Close"]',
+                'viewer': 'div[role="dialog"]'
+            }
         }
         # -----------------------------
 
@@ -203,23 +208,23 @@ class InstagramServer:
         logger.info("Attempting to open the first post from the feed...")
         try:
             # Wait for main feed content directly
-            main_feed = page.locator(self.selectors["main_feed_content"])
+            main_feed = page.locator(self.selectors["feed"]["content"])
             await main_feed.wait_for(state="visible", timeout=15000)
             logger.debug("Main feed content visible.")
 
             # Get first post article
-            first_article = page.locator(self.selectors["feed_first_post_article"])
+            first_article = page.locator(self.selectors["feed"]["first_article"])
             await first_article.wait_for(state="visible", timeout=10000)
             logger.debug("First post article visible.")
 
             # Click more options
-            more_options = first_article.locator(self.selectors["feed_post_more_options_button_relative"])
+            more_options = first_article.locator(self.selectors["feed"]["more_options"])
             await more_options.wait_for(state="visible", timeout=7000)
             logger.debug("More options button visible. Clicking...")
             await more_options.click(timeout=5000)
 
             # Click go to post
-            go_to_post = page.locator(self.selectors["modal_go_to_post_button"])
+            go_to_post = page.locator(self.selectors["feed"]["modal"]["go_to_post"])
             await go_to_post.wait_for(state="visible", timeout=5000) # Added wait_for visible
             logger.debug("'Go to post' button visible. Clicking...")
             await go_to_post.click(timeout=5000)
@@ -255,8 +260,8 @@ class InstagramServer:
             # Removed scroll simulation call
             # await self.simulate_human_scroll(1, 1) # REMOVED
 
-            like_btn = page.locator(self.selectors["post_like_button"])
-            unlike_btn = page.locator(self.selectors["post_unlike_button"])
+            like_btn = page.locator(self.selectors["post"]["like"])
+            unlike_btn = page.locator(self.selectors["post"]["unlike"])
 
             # Check if already liked (using is_visible with short timeout)
             if await unlike_btn.is_visible(timeout=1500):
@@ -278,7 +283,7 @@ class InstagramServer:
             logger.error("Timeout error during like action: %s", e)
             # Check if it might have been liked anyway but confirmation failed
             try:
-                unlike_btn = page.locator(self.selectors["post_unlike_button"])
+                unlike_btn = page.locator(self.selectors["post"]["unlike"])
                 if await unlike_btn.is_visible(timeout=500):
                      logger.warning("Like confirmation timed out, but unlike button IS visible now.")
                      return "Post likely liked, but confirmation timed out."
@@ -311,13 +316,13 @@ class InstagramServer:
 
             # Optional click on comment icon (attempt, but don't fail)
             try:
-                comment_button = page.locator(self.selectors["post_comment_button"])
+                comment_button = page.locator(self.selectors["post"]["comment_button"])
                 await comment_button.click(timeout=3000)
                 logger.debug("Clicked comment icon (optional step).")
             except Exception:
                 logger.debug("Could not click comment icon or it wasn't necessary.")
 
-            comment_input = page.locator(self.selectors["post_comment_input"])
+            comment_input = page.locator(self.selectors["post"]["comment_input"])
             await comment_input.wait_for(state="visible", timeout=10000)
             logger.debug("Comment input visible. Filling text...")
             # Use fill() as requested
@@ -329,7 +334,7 @@ class InstagramServer:
             logger.debug("Pausing for %.2fs before clicking Post button...", post_delay)
             await asyncio.sleep(post_delay)
 
-            post_btn = page.locator(self.selectors["post_comment_submit_button"])
+            post_btn = page.locator(self.selectors["post"]["submit"])
             await post_btn.wait_for(state="visible", timeout=5000) # Wait for button
             logger.debug("Post button visible. Clicking...")
             await post_btn.click(timeout=5000)
@@ -368,7 +373,7 @@ class InstagramServer:
         # --- End Navigation Logic ---
 
         try:
-            story_btn_locator = self.selectors["first_story_button"]
+            story_btn_locator = self.selectors["stories"]["first"]
             logger.info("Looking for the first story ring button using selector: %s", story_btn_locator)
             story_btn = page.locator(story_btn_locator)
 
@@ -380,7 +385,7 @@ class InstagramServer:
             logger.info("Clicked the first story element.")
 
             # Wait for story viewer using close button presence
-            close_btn_locator = self.selectors["story_close_button"]
+            close_btn_locator = self.selectors["stories"]["close"]
             logger.debug("Waiting for story viewer to open (checking for close button)...")
             close_btn = page.locator(close_btn_locator)
             await close_btn.wait_for(state="visible", timeout=35000) # Generous timeout
@@ -402,7 +407,7 @@ class InstagramServer:
         page = self._ensure_page() # Ensure page exists
         logger.debug("Checking if story viewer is open...")
         try:
-            close_btn = page.locator(self.selectors["story_close_button"])
+            close_btn = page.locator(self.selectors["stories"]["close"])
             # Use wait_for with a short timeout to check presence
             await close_btn.wait_for(state="visible", timeout=1500)
             logger.debug("Story viewer check: Close button found. Assuming open.")
@@ -456,8 +461,8 @@ class InstagramServer:
         if not await self._check_story_viewer_open():
             return "Cannot pause story: Story viewer not open."
 
-        pause_selector = self.selectors["story_pause_button"]
-        play_selector = self.selectors["story_play_button"]
+        pause_selector = self.selectors["stories"]["pause"]
+        play_selector = self.selectors["stories"]["play"]
 
         try:
             play_locator = page.locator(play_selector)
@@ -500,8 +505,8 @@ class InstagramServer:
         if not await self._check_story_viewer_open():
             return "Cannot resume story: Story viewer not open."
 
-        play_selector = self.selectors["story_play_button"]
-        pause_selector = self.selectors["story_pause_button"]
+        play_selector = self.selectors["stories"]["play"]
+        pause_selector = self.selectors["stories"]["pause"]
 
         try:
             pause_locator = page.locator(pause_selector)
@@ -544,8 +549,8 @@ class InstagramServer:
         if not await self._check_story_viewer_open():
             return "Cannot like story: Story viewer not open."
 
-        like_selector = self.selectors["story_like_button"]
-        unlike_selector = self.selectors["story_unlike_button"]
+        like_selector = self.selectors["stories"]["like"]
+        unlike_selector = self.selectors["stories"]["unlike"]
 
         try:
             unlike_locator = page.locator(unlike_selector)
@@ -595,7 +600,7 @@ class InstagramServer:
             return "Cannot reply to story: Story viewer not open."
 
         try:
-            reply_input_selector = self.selectors["story_reply_input"]
+            reply_input_selector = self.selectors["stories"]["reply_input"]
             reply_input = page.locator(reply_input_selector)
 
             await reply_input.wait_for(state="visible", timeout=10000)
@@ -630,7 +635,7 @@ class InstagramServer:
             logger.info("Story viewer check indicated it was already closed.")
             return "Story viewer was not open."
 
-        close_button_selector = self.selectors["story_close_button"]
+        close_button_selector = self.selectors["stories"]["close"]
         try:
             close_locator = page.locator(close_button_selector)
             logger.debug("Looking for close button...")
