@@ -23,7 +23,7 @@ async def access_instagram() -> str:
         return "Error: Page object not initialized."
 
     target_url = "https://www.instagram.com/"
-    main_content_selector = instagram.selectors["main_feed_content"]
+    main_content_selector = instagram.selectors["feed"]["content"]
 
     try:
         logger.info("Navigating to Instagram homepage: %s", target_url)
