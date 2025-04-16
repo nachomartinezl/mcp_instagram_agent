@@ -214,8 +214,21 @@ class InstagramServer:
             logger.debug("'Go to post' button visible. Clicking...")
             await go_to_post.click(timeout=5000)
 
-            await page.wait_for_load_state("networkidle", timeout=20000)
-            logger.info("Successfully opened post from feed. Current URL: %s", page.url)
+            # --- MODIFIED WAIT LOGIC ---
+            logger.debug("Waiting for post content to load...")
+            # Wait for either the like button or comment section to appear
+            post_like_btn = page.locator(self.selectors["post"]["like"])
+            post_comment_section = page.locator(self.selectors["post"]["comment_input"])
+
+            try:
+                await post_like_btn.first.wait_for(state="visible", timeout=30000)  # 30s timeout
+            except PlaywrightTimeoutError:
+                # Fallback check for comment section
+                logger.warning("Like button not found within 30s, checking comment section...")
+                await post_comment_section.wait_for(state="visible", timeout=15000) # 15s fallback timeout
+            # --- END MODIFIED WAIT LOGIC ---
+
+            logger.info("Post content loaded successfully. Current URL: %s", page.url)
             return f"Successfully opened post from feed. Current URL: {page.url}"
         except PlaywrightTimeoutError as e:
             logger.error("Timeout error opening post from feed: %s", e)
