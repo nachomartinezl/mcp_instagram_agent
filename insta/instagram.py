@@ -1,12 +1,9 @@
-import json # Kept for cookie loading
+import json
 import os
-# import re # Removed
 import asyncio
-import random # Kept for sleeps/scrolls
+import random
 import logging
 from typing import Optional
-# from urllib.parse import urlparse # Removed
-# from datetime import datetime # Removed
 
 # Playwright imports
 from playwright.async_api import (
@@ -23,7 +20,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler(log_file),
-        # logging.StreamHandler() # Optional: Log to console
     ],
 )
 logger = logging.getLogger(__name__)
@@ -34,11 +30,9 @@ class InstagramServer:
         self.browser = None
         self.context = None
         self.page: Optional[Page] = None
-        # Removed screenshot/snapshot dirs
         self.cookies_path = os.path.join(
             os.path.dirname(__file__), "cookies", "instagram.json"
         )
-        # Removed os.makedirs for screenshots/snapshots
         logger.info("InstagramServer instance created.")
 
         # --- Centralized Selectors (Refined) ---
@@ -64,7 +58,6 @@ class InstagramServer:
             "story_unlike_button": 'div[role="dialog"] svg[aria-label="Unlike"]',
             "story_reply_input": 'div[role="dialog"] textarea[placeholder^="Reply to"]',
             "story_close_button": 'div[role="dialog"] button[aria-label="Close"]',
-            # Added for close_story_viewer verification
             "story_viewer_dialog": 'div[role="dialog"]',
         }
         # -----------------------------
