@@ -1,12 +1,12 @@
-import json
+import json # Kept for cookie loading
 import os
-import re
+# import re # Removed
 import asyncio
-import random
+import random # Kept for sleeps/scrolls
 import logging
 from typing import Optional
-from urllib.parse import urlparse
-from datetime import datetime
+# from urllib.parse import urlparse # Removed
+# from datetime import datetime # Removed
 
 # Playwright imports
 from playwright.async_api import (
@@ -34,44 +34,38 @@ class InstagramServer:
         self.browser = None
         self.context = None
         self.page: Optional[Page] = None
-        self.screenshots_dir = "instagram_screenshots"
-        self.snapshots_dir = "page_snapshots"
+        # Removed screenshot/snapshot dirs
         self.cookies_path = os.path.join(
             os.path.dirname(__file__), "cookies", "instagram.json"
         )
-        os.makedirs(self.screenshots_dir, exist_ok=True)
-        os.makedirs(self.snapshots_dir, exist_ok=True)
-        logger.info(
-            "InstagramServer instance created. Screenshots dir: %s, Snapshots dir: %s",
-            self.screenshots_dir,
-            self.snapshots_dir,
-        )
+        # Removed os.makedirs for screenshots/snapshots
+        logger.info("InstagramServer instance created.")
 
         # --- Centralized Selectors (Refined) ---
         self.selectors = {
             # --- Feed ---
             "main_feed_content": "main[role='main']",
-            "feed_first_post_article": "main[role='main'] article:first-of-type",  # More specific start point
-            "feed_post_more_options_button_relative": 'internal:role=button[name="More options"i]',  # Relative selector for within article
-            "modal_go_to_post_button": 'button:has-text("Go to post")',  # Use has-text for robustness
-            # --- Post View (Scoped within article or main for single post view) ---
-            # Target the button DIV containing the Like SVG
+            "feed_first_post_article": "main[role='main'] article:first-of-type",
+            "feed_post_more_options_button_relative": 'internal:role=button[name="More options"i]',
+            "modal_go_to_post_button": 'button:has-text("Go to post")',
+            # --- Post View ---
             "post_like_button": 'article div[role="button"]:has(svg[aria-label="Like"]), main div[role="button"]:has(svg[aria-label="Like"])',
-             # Target the button DIV containing the Unlike SVG
             "post_unlike_button": 'article div[role="button"]:has(svg[aria-label="Unlike"]), main div[role="button"]:has(svg[aria-label="Unlike"])',
             "post_comment_button": 'article div[role="button"]:has(svg[aria-label="Comment"]), main div[role="button"]:has(svg[aria-label="Comment"])',
             "post_comment_input": 'textarea[aria-label="Add a comment…"]',
             "post_comment_submit_button": 'div[role="button"]:text-is("Post")',
             # --- Stories ---
             "first_story_button": 'div[role="button"][aria-label^="Story by"][tabindex="0"]',
-            "story_next_button": 'div[role="dialog"] button[aria-label="Next"]',  # Scoped
-            "story_previous_button": 'div[role="dialog"] button[aria-label="Previous"]',  # Scoped
+            "story_next_button": 'div[role="dialog"] button[aria-label="Next"]',
+            "story_previous_button": 'div[role="dialog"] button[aria-label="Previous"]',
             "story_pause_button": 'div[role="dialog"] div[role="button"]:has(svg[aria-label="Pause"])',
             "story_play_button": 'div[role="dialog"] div[role="button"]:has(svg[aria-label="Play"])',
-            "story_like_button": 'div[role="dialog"] svg[aria-label="Like"]',  # Target SVG directly within dialog
+            "story_like_button": 'div[role="dialog"] svg[aria-label="Like"]',
             "story_unlike_button": 'div[role="dialog"] svg[aria-label="Unlike"]',
             "story_reply_input": 'div[role="dialog"] textarea[placeholder^="Reply to"]',
             "story_close_button": 'div[role="dialog"] button[aria-label="Close"]',
+            # Added for close_story_viewer verification
+            "story_viewer_dialog": 'div[role="dialog"]',
         }
         # -----------------------------
 
@@ -87,6 +81,7 @@ class InstagramServer:
             return False
         if os.path.exists(self.cookies_path):
             try:
+                # Keep json import for this
                 with open(self.cookies_path, "r") as f:
                     cookies = json.load(f)
                 await self.context.add_cookies(cookies)
@@ -102,81 +97,11 @@ class InstagramServer:
         logger.warning("Cookie file not found at %s", self.cookies_path)
         return False
 
-    def _sanitize_filename(self, name: str) -> str:
-        name = name.strip()
-        name = name.replace("/", "_").replace("\\", "_")
-        name = re.sub(r'[<>:"|?*]', "", name)
-        name = re.sub(r"_+", "_", name)
-        name = name.strip("_")
-        return name or "unknown"
-
-    async def snapshot_page_tree(
-        self, output_dir: Optional[str] = None
-    ) -> Optional[str]:
-        page = self._ensure_page()  # Corrected: Call the method
-        target_dir = output_dir or self.snapshots_dir
-        os.makedirs(target_dir, exist_ok=True)
-
-        current_url = page.url
-        logger.info(
-            "Attempting to take accessibility snapshot of current page: %s", current_url
-        )
-
-        identifier = "unknown_page"
-        try:
-            parsed_url = urlparse(current_url)
-            path_parts = [part for part in parsed_url.path.split("/") if part]
-            if not path_parts:
-                identifier = "feed"
-            elif path_parts[0] == "p" and len(path_parts) > 1:
-                identifier = f"post_{path_parts[1]}"
-            elif path_parts[0] == "stories" and len(path_parts) > 1:
-                identifier = f"stories_{path_parts[1]}"
-            elif path_parts[0] == "explore":
-                identifier = "explore"
-            elif path_parts[0] == "direct":
-                identifier = "direct"
-            elif len(path_parts) == 1:
-                identifier = f"profile_{path_parts[0]}"
-            else:
-                identifier = (
-                    path_parts[0] if path_parts else "root"
-                )  # Handle root case better
-        except Exception as parse_e:
-            logger.warning(
-                "Could not parse URL '%s' for filename identifier: %s. Using default.",
-                current_url,
-                parse_e,
-            )
-            identifier = "parse_error"
-
-        sanitized_identifier = self._sanitize_filename(identifier)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{sanitized_identifier}_{timestamp}.json"
-        full_output_path = os.path.join(target_dir, filename)
-
-        logger.info("Saving snapshot to: %s", full_output_path)
-        try:
-            # Consider adding waits here if needed before snapshotting
-            snapshot = await page.accessibility.snapshot()
-            if snapshot is None:
-                logger.error("Failed to get snapshot data (snapshot is None).")
-                return None
-            with open(full_output_path, "w", encoding="utf-8") as f:
-                json.dump(snapshot, f, indent=2, ensure_ascii=False)
-            logger.info("✅ Accessibility snapshot saved successfully.")
-            return full_output_path
-        except Exception as e:
-            logger.error(
-                "Failed to take or save accessibility snapshot to %s: %s",
-                full_output_path,
-                e,
-                exc_info=True,
-            )
-            return None
+    # Removed _sanitize_filename method
+    # Removed snapshot_page_tree method
 
     async def init(self):
-        # This method looks complex but generally okay, no changes needed based on selectors
+        # This method remains largely the same, just logging adjusted slightly
         if self.browser:
             logger.debug("Browser already initialized.")
             return
@@ -268,168 +193,15 @@ class InstagramServer:
         else:
             logger.info("Browser already closed or not initialized.")
 
-    # --- Core Interaction Helpers (using Locators) ---
-    async def _get_locator(self, selector: str, description: str) -> Optional[Locator]:
-        """Gets a Playwright Locator."""
-        page = self._ensure_page()
-        try:
-            locator = page.locator(selector)
-            logger.debug("Created locator for %s ('%s')", description, selector)
-            return locator
-        except Exception as e:
-            logger.error(
-                "Error creating locator for %s ('%s'): %s",
-                description,
-                selector,
-                e,
-                exc_info=True,
-            )
-            return None
-
-    async def wait_for_locator(
-        self,
-        locator: Locator,
-        description: str,
-        timeout: int = 15000,
-        state: str = "visible",
-    ) -> bool:
-        """Waits for a locator to be in the specified state."""
-        logger.debug(
-            "Waiting for %s to be %s (timeout: %dms)...", description, state, timeout
-        )
-        try:
-            await locator.wait_for(state=state, timeout=timeout)
-            logger.info("%s found and is %s!", description, state)
-            return True
-        except PlaywrightTimeoutError:
-            logger.error("Timeout waiting for %s to be %s.", description, state)
-            return False
-        except Exception as e:
-            logger.error(
-                "Error waiting for %s (state: %s): %s",
-                description,
-                state,
-                e,
-                exc_info=True,
-            )
-            return False
-
-    async def click_element(
-        self,
-        selector: str,
-        description: str,
-        timeout: int = 10000,
-        force_click: bool = False,
-        **kwargs,
-    ) -> bool:
-        """Gets a locator, waits for it, and clicks it."""
-        locator = await self._get_locator(selector, description)
-        if not locator:
-            return False
-
-        # Use wait_for_locator for better logging/control
-        if not await self.wait_for_locator(locator, description, timeout=timeout):
-            await self.capture_screenshot(
-                f"click_fail_notfound_{description.replace(' ', '_')}"
-            )
-            return False
-
-        try:
-            logger.debug("Attempting to click %s ('%s')...", description, selector)
-            click_args = {"timeout": 5000, **kwargs}  # Shorter click timeout
-            if force_click:
-                logger.warning(
-                    "Attempting to force click %s ('%s')", description, selector
-                )
-                click_args["force"] = True
-            await locator.click(**click_args)
-            logger.info("Clicked %s successfully.", description)
-            return True
-        except PlaywrightTimeoutError:
-            logger.error("Timeout trying to click %s ('%s').", description, selector)
-            await self.capture_screenshot(
-                f"click_timeout_{description.replace(' ', '_')}"
-            )
-            return False
-        except Exception as e:
-            logger.error(
-                "Error clicking %s ('%s'): %s", description, selector, e, exc_info=True
-            )
-            await self.capture_screenshot(
-                f"click_error_{description.replace(' ', '_')}"
-            )
-            return False
-
-    async def type_into_element(
-        self,
-        selector: str,
-        text: str,
-        description: str,
-        timeout: int = 10000,
-        type_delay: int = 100,
-    ) -> bool:
-        """Gets a locator, waits, focuses, and types into it."""
-        locator = await self._get_locator(selector, description)
-        if not locator:
-            return False
-
-        if not await self.wait_for_locator(locator, description, timeout=timeout):
-            await self.capture_screenshot(
-                f"type_fail_notfound_{description.replace(' ', '_')}"
-            )
-            return False
-
-        try:
-            logger.debug("Attempting to type into %s ('%s')...", description, selector)
-            await locator.focus(timeout=3000)
-            await asyncio.sleep(random.uniform(0.1, 0.3))
-            logger.info("Typing into %s: '%s'", description, text)
-            # Using fill might be faster and more reliable for textareas sometimes
-            # await locator.fill(text, timeout=5000)
-            # Sticking with char by char for simulation
-            for char in text:
-                await locator.type(
-                    char, delay=random.uniform(type_delay * 0.5, type_delay * 1.5)
-                )
-            logger.info("Finished typing into %s.", description)
-            return True
-        except PlaywrightTimeoutError:
-            logger.error(
-                "Timeout trying to type into %s ('%s').", description, selector
-            )
-            await self.capture_screenshot(
-                f"type_timeout_{description.replace(' ', '_')}"
-            )
-            return False
-        except Exception as e:
-            logger.error(
-                "Error typing into %s ('%s'): %s",
-                description,
-                selector,
-                e,
-                exc_info=True,
-            )
-            await self.capture_screenshot(f"type_error_{description.replace(' ', '_')}")
-            return False
-
-    async def capture_screenshot(self, prefix: str) -> str:
-        # Method looks fine
-        page = self._ensure_page()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{prefix}_{timestamp}.png"
-        filepath = os.path.join(self.screenshots_dir, filename)
-        try:
-            await page.screenshot(path=filepath)
-            logger.info("Screenshot captured: %s", filepath)
-            return filepath
-        except Exception as e:
-            logger.error(
-                "Failed to capture screenshot %s: %s", filepath, e, exc_info=True
-            )
-            return f"Error capturing screenshot: {e}"
+    # --- Removed Core Interaction Helpers ---
+    # Removed _get_locator
+    # Removed wait_for_locator
+    # Removed click_element
+    # Removed type_into_element
+    # Removed capture_screenshot
 
     async def simulate_human_scroll(self, min_scrolls: int = 1, max_scrolls: int = 3):
-        # Method looks fine
+        # Method looks fine, uses page directly. Kept random import for this.
         page = self._ensure_page()
         num_scrolls = random.randint(min_scrolls, max_scrolls)
         logger.info("Simulating human scroll: %d scrolls.", num_scrolls)
@@ -448,7 +220,7 @@ class InstagramServer:
                     scroll_amount,
                     pause_duration,
                 )
-                await asyncio.sleep(pause_duration)
+                await asyncio.sleep(pause_duration) # Kept asyncio import
             logger.info("Finished simulating human scroll.")
         except Exception as e:
             logger.error("Error during human scroll simulation: %s", e, exc_info=True)
@@ -456,436 +228,223 @@ class InstagramServer:
     # --- Feed Actions ---
 
     async def open_first_post_from_feed(self) -> str:
-        """Clicks 'More options' on the first post in the feed, then 'Go to post'."""
+        # Replaced with provided implementation
         page = self._ensure_page()
-        logger.info(
-            "Attempting to open the first post from the feed via 'More options' -> 'Go to post'."
-        )
-
-        # --- CORRECTED Check for Main Feed Content ---
-        main_feed_locator = await self._get_locator(
-            self.selectors["main_feed_content"], "Main feed content"
-        )
-        if not main_feed_locator or not await self.wait_for_locator(
-            main_feed_locator, "Main feed content", timeout=15000 # Increased timeout slightly
-        ):
-            logger.error("Main feed content locator not found or timed out.")
-            await self.capture_screenshot("main_feed_content_not_found") # Capture screenshot on failure
-            return "Error: Could not confirm main feed content is loaded."
-        # --- End Correction ---
-
-        # --- Logic Using Locators ---
-        first_article_locator = await self._get_locator(
-            self.selectors["feed_first_post_article"], "First post article"
-        )
-        if not first_article_locator:
-            # This check might be redundant if _get_locator handles errors, but safe to keep
-            logger.error("Could not create locator for the first post article.")
-            return "Error: Could not create locator for the first post article."
-
-        # Wait for the article itself first using wait_for_locator
-        if not await self.wait_for_locator(
-            first_article_locator, "First post article", timeout=10000, state="visible" # Wait for visible
-        ):
-            await self.capture_screenshot("feed_first_article_not_found")
-            return "Error: Could not find the first post article element."
-
-        # Get the locator for the button *within* the article locator
-        more_options_locator = first_article_locator.locator(
-            self.selectors["feed_post_more_options_button_relative"]
-        )
-        logger.info("Locating 'More options' button on the first post.")
-
-        # Wait for the button to be visible within the article
-        if not await self.wait_for_locator(
-            more_options_locator, "More options button (within article)", timeout=7000
-        ):
-            logger.error("Could not find 'More options' button within the first post.")
-            await self.capture_screenshot("feed_more_options_not_found")
-            return "Error: Could not find 'More options' button on the first post."
-
-        # Click the button locator
-        logger.info("Found 'More options' button. Clicking...")
+        logger.info("Attempting to open the first post from the feed...")
         try:
-            # Click the locator directly
-            await more_options_locator.click(timeout=5000)
+            # Wait for main feed content directly
+            main_feed = page.locator(self.selectors["main_feed_content"])
+            await main_feed.wait_for(state="visible", timeout=15000)
+            logger.debug("Main feed content visible.")
+
+            # Get first post article
+            first_article = page.locator(self.selectors["feed_first_post_article"])
+            await first_article.wait_for(state="visible", timeout=10000)
+            logger.debug("First post article visible.")
+
+            # Click more options
+            more_options = first_article.locator(self.selectors["feed_post_more_options_button_relative"])
+            await more_options.wait_for(state="visible", timeout=7000)
+            logger.debug("More options button visible. Clicking...")
+            await more_options.click(timeout=5000)
+
+            # Click go to post
+            go_to_post = page.locator(self.selectors["modal_go_to_post_button"])
+            await go_to_post.wait_for(state="visible", timeout=5000) # Added wait_for visible
+            logger.debug("'Go to post' button visible. Clicking...")
+            await go_to_post.click(timeout=5000)
+
+            await page.wait_for_load_state("networkidle", timeout=20000)
+            logger.info("Successfully opened post from feed. Current URL: %s", page.url)
+            return f"Successfully opened post from feed. Current URL: {page.url}"
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error opening post from feed: %s", e)
+            # Removed screenshot call
+            return f"Error: Timeout opening post from feed - {e}"
         except Exception as e:
-            logger.error("Error clicking 'More options' button: %s", e, exc_info=True)
-            await self.capture_screenshot("feed_more_options_click_error")
-            return f"Error clicking 'More options' button: {e}"
-        # --- End Logic Using Locators ---
+            logger.error("Error opening post from feed: %s", e, exc_info=True)
+            # Removed screenshot call
+            return f"Error: Could not open post from feed - {e}"
 
-        # Click 'Go to post' in the modal (using the existing click_element helper)
-        go_to_post_selector = self.selectors["modal_go_to_post_button"]
-        if await self.click_element(
-            go_to_post_selector, "'Go to post' button", timeout=5000
-        ):
-            try:
-                await page.wait_for_load_state("networkidle", timeout=20000)
-            except Exception as load_e:
-                logger.warning(
-                    "Network idle wait timed out after clicking 'Go to post', proceeding anyway: %s",
-                    load_e,
-                )
-
-            current_url = page.url
-            logger.info("Successfully navigated to post: %s", current_url)
-            screenshot = await self.capture_screenshot("post_opened_from_feed")
-            return f"Successfully opened post from feed. Current URL: {current_url}. Screenshot: {screenshot}"
-        else:
-            # click_element logs error and takes screenshot
-            return "Error: Could not click 'Go to post' button in the modal."
-        
     # --- Post Actions ---
 
     async def like_post(self, post_url: Optional[str] = None) -> str:
-        """Likes the currently open post, or navigates to post_url first."""
+        # Replaced with provided implementation, added try/except
         page = self._ensure_page()
         action_description = (
             f"like post at {post_url}" if post_url else "like current post"
         )
         logger.info(f"Attempting to {action_description}...")
 
-        post_identifier = "post" # Default identifier
-        if post_url:
-            logger.info("Navigating to post URL: %s", post_url)
-            try:
+        try:
+            if post_url:
+                logger.info("Navigating to post URL: %s", post_url)
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
                 logger.info("Page loaded for post: %s", post_url)
-                post_identifier = self._sanitize_filename(post_url.split('/')[-2]) if '/p/' in post_url else 'post'
-            except Exception as e:
-                logger.error(
-                    "Failed to navigate to post URL %s: %s", post_url, e, exc_info=True
-                )
-                screenshot_path = await self.capture_screenshot(f"post_nav_fail_{self._sanitize_filename(post_url.split('/')[-2]) if post_url and '/p/' in post_url else 'post'}")
-                return f"Failed to navigate to post {post_url}. Screenshot: {screenshot_path}"
-        else:
-            logger.info("Attempting to like the post on the current page.")
-            post_identifier = self._sanitize_filename(page.url.split('/')[-2]) if '/p/' in page.url else 'post'
 
+            await self.simulate_human_scroll(1, 1) # Keep scroll simulation
 
-        await self.simulate_human_scroll(1, 1)
-        screenshot_before_like = await self.capture_screenshot(f"post_like_view_{post_identifier}") # Capture state before attempting like
+            like_btn = page.locator(self.selectors["post_like_button"])
+            unlike_btn = page.locator(self.selectors["post_unlike_button"])
 
-        like_button_selector = self.selectors["post_like_button"]
-        unlike_button_selector = self.selectors["post_unlike_button"]
+            # Check if already liked (using is_visible with short timeout)
+            if await unlike_btn.is_visible(timeout=1500):
+                logger.warning("Post appears to be already liked (Unlike button found).")
+                return "Post already liked."
 
-        unlike_locator = await self._get_locator(
-            unlike_button_selector, "Post unlike button"
-        )
-        # Increase visibility check timeout slightly
-        if unlike_locator and await unlike_locator.is_visible(timeout=1500):
-            logger.warning("Post appears to be already liked (Unlike button found).")
-            return f"Post already liked. Screenshot: {screenshot_before_like}"
+            logger.info("Looking for like button...")
+            await like_btn.wait_for(state="visible", timeout=10000) # Wait for button
+            logger.debug("Like button visible. Clicking...")
+            await like_btn.click(timeout=5000)
 
-        logger.info("Looking for like button using selector: %s", like_button_selector)
-        # Use the updated click_element helper which uses the correct locator internally
-        if await self.click_element(like_button_selector, "Post like button"):
-            # INCREASED delay for UI update and potential animation
-            logger.debug("Waiting after click for UI to potentially update...")
-            await asyncio.sleep(random.uniform(1.5, 2.5)) # Longer delay
-            # Re-fetch locator for verification, use the CORRECT unlike selector
-            unlike_locator_after = await self._get_locator(
-                unlike_button_selector, "Post unlike button (verify)"
-            )
-            # Increase verification timeout
-            logger.debug("Verifying if Unlike button appeared...")
-            if unlike_locator_after and await unlike_locator_after.is_visible(
-                timeout=3000
-            ):
-                logger.info(
-                    "Verified post liked successfully (Unlike button appeared)."
-                )
-                # Capture screenshot after successful like
-                screenshot_path = await self.capture_screenshot(f"post_liked_success_{post_identifier}")
-                return f"Post liked successfully. Screenshot: {screenshot_path}"
-            else:
-                logger.warning("Clicked like, but Unlike button did not appear or timed out.")
-                screenshot_verify_fail = await self.capture_screenshot("post_like_verify_fail")
-                return f"Clicked like, but verification failed. Screenshot: {screenshot_verify_fail}"
-        else:
-            # Error logged by click_element
-            # Capture screenshot if click failed (screenshot_before_like might be more useful)
-            await self.capture_screenshot(f"post_like_click_failed_{post_identifier}")
-            return f"Could not find or click like button. Screenshot: {screenshot_before_like}"
+            # Wait for unlike button to appear as confirmation
+            logger.debug("Waiting for unlike button to confirm like...")
+            await unlike_btn.wait_for(state="visible", timeout=3000)
+            logger.info("Post liked successfully.")
+            return "Post liked successfully."
+
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error during like action: %s", e)
+            # Check if it might have been liked anyway but confirmation failed
+            try:
+                unlike_btn = page.locator(self.selectors["post_unlike_button"])
+                if await unlike_btn.is_visible(timeout=500):
+                     logger.warning("Like confirmation timed out, but unlike button IS visible now.")
+                     return "Post likely liked, but confirmation timed out."
+            except: pass # Ignore errors in this secondary check
+            # Removed screenshot call
+            return f"Error: Timeout during like action - {e}"
+        except Exception as e:
+            logger.error("Error liking post: %s", e, exc_info=True)
+            # Removed screenshot call
+            return f"Error: Could not like post - {e}"
 
     async def comment_on_post(
         self, comment_text: str, post_url: Optional[str] = None
     ) -> str:
+        # Replaced with provided implementation, added try/except and logging
         page = self._ensure_page()
         action_description = (
             f"comment on post at {post_url}" if post_url else "comment on current post"
         )
         logger.info(f"Attempting to {action_description} with text: '{comment_text}'")
 
-        post_identifier = "post" # Default identifier
-        if post_url:
-            logger.info("Navigating to post URL: %s", post_url)
-            try:
+        try:
+            if post_url:
+                logger.info("Navigating to post URL: %s", post_url)
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
                 logger.info("Page loaded for post: %s", post_url)
-                post_identifier = self._sanitize_filename(post_url.split('/')[-2]) if '/p/' in post_url else 'post'
-            except Exception as e:
-                logger.error(
-                    "Failed to navigate to post URL %s: %s", post_url, e, exc_info=True
-                )
-                screenshot_path = await self.capture_screenshot(f"post_nav_fail_{self._sanitize_filename(post_url.split('/')[-2]) if post_url and '/p/' in post_url else 'post'}")
-                return f"Failed to navigate to post {post_url}. Screenshot: {screenshot_path}"
-        else:
-            logger.info("Attempting to comment on the post on the current page.")
-            post_identifier = self._sanitize_filename(page.url.split('/')[-2]) if '/p/' in page.url else 'post'
 
+            await self.simulate_human_scroll(1, 1) # Keep scroll simulation
 
-        await self.simulate_human_scroll(1, 1)
-        # Optional click on comment icon (keep as is)
-        comment_button_selector = self.selectors["post_comment_button"]
-        logger.debug(
-            "Attempting to click comment button/icon first (selector: %s)",
-            comment_button_selector,
-        )
-        await self.click_element(
-            comment_button_selector, "Post comment button/icon", timeout=3000
-        )  # Optional click, don't fail if it doesn't work
+            # Optional click on comment icon (attempt, but don't fail)
+            try:
+                comment_button = page.locator(self.selectors["post_comment_button"])
+                await comment_button.click(timeout=3000)
+                logger.debug("Clicked comment icon (optional step).")
+            except Exception:
+                logger.debug("Could not click comment icon or it wasn't necessary.")
 
-        comment_input_selector = self.selectors["post_comment_input"]
-        # Use type_into_element (which now uses fill by default unless you changed it back)
-        if not await self.type_into_element(
-            comment_input_selector, comment_text, "Comment input"
-        ):
-             # Screenshot taken inside type_into_element on failure
-            return f"Could not find or type into comment input area."
+            comment_input = page.locator(self.selectors["post_comment_input"])
+            await comment_input.wait_for(state="visible", timeout=10000)
+            logger.debug("Comment input visible. Filling text...")
+            # Use fill() as requested
+            await comment_input.fill(comment_text)
+            logger.info("Filled comment text.")
 
-        # *** ADDED Delay before clicking Post ***
-        post_delay = random.uniform(0.6, 1.4)
-        logger.debug("Pausing for %.2fs before clicking Post button...", post_delay)
-        await asyncio.sleep(post_delay)
+            # Add delay before posting
+            post_delay = random.uniform(0.6, 1.4)
+            logger.debug("Pausing for %.2fs before clicking Post button...", post_delay)
+            await asyncio.sleep(post_delay)
 
-        post_button_selector = self.selectors["post_comment_submit_button"]
-        if await self.click_element(
-            post_button_selector, "Comment post button", timeout=5000
-        ):
-            logger.info("Clicked 'Post' button to submit comment.")
-            # Keep existing delay after posting
+            post_btn = page.locator(self.selectors["post_comment_submit_button"])
+            await post_btn.wait_for(state="visible", timeout=5000) # Wait for button
+            logger.debug("Post button visible. Clicking...")
+            await post_btn.click(timeout=5000)
+
+            # Add delay after posting
             await asyncio.sleep(random.uniform(1.5, 2.5))
-            screenshot_after = await self.capture_screenshot(f"comment_post_submitted_{post_identifier}")
-            return (
-                f"Comment posted successfully. Screenshot saved at: {screenshot_after}"
-            )
-        else:
-             # Screenshot taken inside click_element on failure
-            return f"Could not click 'Post' button to submit comment."
+            logger.info("Comment posted successfully.")
+            return "Comment posted successfully."
+
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error during comment action: %s", e)
+            # Removed screenshot call
+            return f"Error: Timeout during comment action - {e}"
+        except Exception as e:
+            logger.error("Error commenting on post: %s", e, exc_info=True)
+            # Removed screenshot call
+            return f"Error: Could not comment on post - {e}"
 
     # --- Story Actions ---
 
     async def open_stories(self) -> str:
-        """Opens the first Instagram story from the feed."""
+        # Replaced with provided implementation, added try/except and logging
         page = self._ensure_page()
         logger.info("Attempting to open Instagram stories...")
 
-        # --- Navigate to feed if needed (Keep this logic) ---
-        # [ ... navigation logic ... ]
+        # --- Navigate to feed if needed (Simplified check) ---
         current_url = page.url
-        is_on_feed = (
-            "instagram.com" in current_url
-            and "/p/" not in current_url
-            and "/stories/" not in current_url
-            and "/reels/" not in current_url
-            and "/explore/" not in current_url
-            and "/direct/" not in current_url
-        )
+        is_on_feed = "/p/" not in current_url and "/stories/" not in current_url
         if not is_on_feed:
-             # [ ... navigation logic ... ]
-             pass # Assume navigation happens correctly
+            logger.info("Not on main feed, navigating to Instagram base URL.")
+            try:
+                await page.goto("https://www.instagram.com/", wait_until="networkidle", timeout=30000)
+            except Exception as nav_e:
+                logger.error("Failed to navigate to feed: %s", nav_e)
+                return f"Error: Failed to navigate to feed - {nav_e}"
         # --- End Navigation Logic ---
 
-
-        first_story_selector = self.selectors["first_story_button"]
-        logger.info("Looking for the first story ring button using selector: %s", first_story_selector)
-
-        first_story_locator = await self._get_locator(first_story_selector, "First story button (matches multiple)")
-        if not first_story_locator:
-            return "Error: Could not create locator for story buttons."
-
-        first_story_target_locator = first_story_locator.first
-        logger.debug("Specifically targeting the .first() instance of the story button locator.")
-
         try:
-            logger.debug("Waiting for the first story button to be visible...")
-            if await self.wait_for_locator(first_story_target_locator, "First story button", timeout=15000):
-                logger.debug("First story button is visible. Clicking...")
-                await asyncio.sleep(random.uniform(0.1, 0.3))
-                await first_story_target_locator.click(timeout=5000)
-                logger.info("Clicked the first story element.")
-                await asyncio.sleep(0.5) # Small pause after click for transition start
-            else:
-                await self.capture_screenshot("first_story_click_fail_notfound")
-                return "Could not find the first story element after getting locator."
+            story_btn_locator = self.selectors["first_story_button"]
+            logger.info("Looking for the first story ring button using selector: %s", story_btn_locator)
+            story_btn = page.locator(story_btn_locator)
+
+            # Wait for the first story button to be visible
+            await story_btn.first.wait_for(state="visible", timeout=15000)
+            logger.debug("First story button visible. Clicking...")
+            await asyncio.sleep(random.uniform(0.1, 0.3))
+            await story_btn.first.click(timeout=5000)
+            logger.info("Clicked the first story element.")
+
+            # Wait for story viewer using close button presence
+            close_btn_locator = self.selectors["story_close_button"]
+            logger.debug("Waiting for story viewer to open (checking for close button)...")
+            close_btn = page.locator(close_btn_locator)
+            await close_btn.wait_for(state="visible", timeout=35000) # Generous timeout
+
+            logger.info("Stories opened successfully (close button found).")
+            return "Stories opened successfully."
+
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error opening stories: %s", e)
+            # Removed screenshot call
+            return f"Error: Timeout opening stories - {e}"
         except Exception as e:
-            logger.error("Error clicking the first story button: %s", e, exc_info=True)
-            await self.capture_screenshot("first_story_click_error")
-            return f"Error clicking first story element: {e}"
+            logger.error("Error opening stories: %s", e, exc_info=True)
+            # Removed screenshot call
+            return f"Error: Could not open stories - {e}"
 
-        # --- REVISED WAIT: Wait for ANY essential story element with asyncio.wait ---
-        # Elements that indicate the story UI is interactive and loaded
-        essential_selectors = {
-            "Pause": self.selectors['story_pause_button'],
-            "Next": self.selectors['story_next_button'],
-            "Reply": self.selectors['story_reply_input'],
-            # Optional: Add Like button if it appears reliably early
-            # "Like": self.selectors['story_like_button'],
-        }
-        wait_tasks = []
-        description_map = {}
-
-        logger.info("Creating wait tasks for essential story elements...")
-        for desc, selector in essential_selectors.items():
-            locator = await self._get_locator(selector, f"Story {desc} element")
-            if locator:
-                # Create a task for the wait_for call
-                task = asyncio.create_task(locator.wait_for(state="visible", timeout=35000)) # Generous 35s timeout for the wait itself
-                wait_tasks.append(task)
-                description_map[task] = desc # Map task back to description
-            else:
-                logger.warning("Could not create locator for Story %s element ('%s')", desc, selector)
-
-        if not wait_tasks:
-             logger.error("Could not create any locators for essential story elements.")
-             return "Error: Failed to create locators for story verification."
-
-        story_loaded = False
-        found_element_desc = "None"
-        overall_wait_timeout = 35.0 # Total time to wait for *any* task to complete
-
-        logger.info(f"Waiting up to {overall_wait_timeout}s for ANY essential story element to become visible...")
-        try:
-            # Wait for the *first* task to complete
-            done, pending = await asyncio.wait(
-                wait_tasks,
-                timeout=overall_wait_timeout,
-                return_when=asyncio.FIRST_COMPLETED
-            )
-
-            # Cancel pending tasks to avoid resource leaks
-            for task in pending:
-                task.cancel()
-                try:
-                    await task # Allow cancellation to propagate
-                except asyncio.CancelledError:
-                    pass # Expected
-
-            if done:
-                # Check if the completed task finished without error
-                completed_task = done.pop() # Get the first completed task
-                found_element_desc = description_map.get(completed_task, "Unknown Element")
-                try:
-                    await completed_task # Raise exception if wait_for failed internally
-                    story_loaded = True
-                    logger.info(f"Detected story load via: {found_element_desc}")
-                except PlaywrightTimeoutError:
-                     logger.warning(f"Wait task for {found_element_desc} completed but timed out internally (should not happen with FIRST_COMPLETED unless timeout is very short).")
-                except Exception as task_e:
-                     logger.warning(f"Wait task for {found_element_desc} completed with an error: {task_e}")
-
-            else: # No tasks completed, asyncio.wait timed out
-                 logger.error(f"Timeout ({overall_wait_timeout}s) waiting for any essential story element.")
-
-        except asyncio.TimeoutError: # Should be caught by the check on 'done' set, but belt-and-suspenders
-             logger.error(f"Overall asyncio.wait timed out ({overall_wait_timeout}s) waiting for any essential story element.")
-        except Exception as e:
-             logger.error(f"Unexpected error during asyncio.wait for story elements: {e}", exc_info=True)
-
-        # --- Final Result ---
-        if story_loaded:
-            logger.info(f"Story viewer content appeared successfully (confirmed by {found_element_desc}).")
-            await asyncio.sleep(random.uniform(0.2, 0.5)) # Tiny delay for UI to settle fully
-            screenshot_path = await self.capture_screenshot("story_opened_confirmed")
-            return f"Stories opened successfully (confirmed by {found_element_desc}). Screenshot saved at: {screenshot_path}"
-        else:
-            logger.error(
-                "Clicked story button, but essential story content did not appear within timeout."
-            )
-            screenshot_path = await self.capture_screenshot("story_content_final_fail")
-            # Check close button as last resort
-            close_button_visible = False
-            close_locator = await self._get_locator(self.selectors['story_close_button'], "Story close button (fallback check)")
-            if close_locator:
-                 try:
-                    close_button_visible = await close_locator.is_visible(timeout=500)
-                 except Exception: pass
-            logger.warning(f"Close button check after content failure: {'Visible' if close_button_visible else 'Not Visible'}")
-            return f"Clicked story button, but story content did not load correctly. Screenshot: {screenshot_path}"
-        # --- End Revised Wait ---
-        
     async def _check_story_viewer_open(self) -> bool:
-        """Internal helper to check if the story viewer seems to be open by looking for ANY key interactive element."""
-        page = self._ensure_page()
+        # Replaced with provided implementation
+        page = self._ensure_page() # Ensure page exists
         logger.debug("Checking if story viewer is open...")
-
-        # Selectors to check for presence
-        check_selectors = {
-            "Pause": self.selectors['story_pause_button'],
-            "Next": self.selectors['story_next_button'],
-            "Reply": self.selectors['story_reply_input'],
-            "Close": self.selectors['story_close_button'], # Include close button in check
-            # Optional: Add Like button
-            # "Like": self.selectors['story_like_button'],
-        }
-        wait_tasks = []
-
-        for desc, selector in check_selectors.items():
-            locator = await self._get_locator(selector, f"Story {desc} element (check open)")
-            if locator:
-                # Use is_visible() check - note: is_visible doesn't wait long inherently
-                # We rely on asyncio.wait for the overall short timeout
-                task = asyncio.create_task(locator.is_visible()) # is_visible itself has negligible wait
-                wait_tasks.append(task)
-
-        if not wait_tasks:
-             logger.warning("Could not create any locators for story viewer check.")
-             return False # Cannot check
-
-        overall_check_timeout = 1.5 # Short overall timeout (seconds)
-
-        found_visible = False
         try:
-            # Wait for the *first* task to complete successfully (returning True)
-            done, pending = await asyncio.wait(
-                wait_tasks,
-                timeout=overall_check_timeout,
-                return_when=asyncio.FIRST_COMPLETED
-            )
-
-            # Cancel pending tasks
-            for task in pending:
-                task.cancel()
-                try: await task
-                except asyncio.CancelledError: pass
-
-            if done:
-                completed_task = done.pop()
-                try:
-                    if await completed_task: # Check if is_visible returned True
-                         found_visible = True
-                         # Find description - requires iterating through original map or tasks if needed
-                         # logger.debug("Story viewer check: An essential element is visible.")
-                except Exception:
-                    pass # Ignore errors from is_visible, just means that one wasn't found
-
-        except asyncio.TimeoutError:
-             pass # Timeout means none were found quickly
-        except Exception as e:
-             logger.warning(f"Unexpected error during asyncio.wait for story check: {e}")
-
-
-        if found_visible:
-            logger.debug("Story viewer check: An essential element was found. Assuming open.")
+            close_btn = page.locator(self.selectors["story_close_button"])
+            # Use wait_for with a short timeout to check presence
+            await close_btn.wait_for(state="visible", timeout=1500)
+            logger.debug("Story viewer check: Close button found. Assuming open.")
             return True
-        else:
-             logger.debug(f"Story viewer check: No essential elements found within {overall_check_timeout}s. Assuming closed.")
-             return False
+        except PlaywrightTimeoutError:
+            logger.debug("Story viewer check: Close button not found within timeout. Assuming closed.")
+            return False
+        except Exception as e:
+            # Catch other potential errors during check
+            logger.warning("Error checking story viewer state: %s", e)
+            return False # Assume closed on error
 
     async def next_story(self) -> str:
-        # Logic looks okay (uses keyboard)
+        # Uses keyboard, largely unchanged but uses updated check method
         page = self._ensure_page()
         logger.info("Attempting to go to next story (using ArrowRight)...")
         if not await self._check_story_viewer_open():
@@ -902,7 +461,7 @@ class InstagramServer:
             return f"Error navigating to next story: {e}"
 
     async def previous_story(self) -> str:
-        # Logic looks okay (uses keyboard)
+        # Uses keyboard, largely unchanged but uses updated check method
         page = self._ensure_page()
         logger.info("Attempting to go to previous story (using ArrowLeft)...")
         if not await self._check_story_viewer_open():
@@ -919,7 +478,8 @@ class InstagramServer:
             return f"Error navigating to previous story: {e}"
 
     async def pause_story(self) -> str:
-        # Logic looks okay, ensure selector usage is correct
+        # Refactored to use direct Playwright calls
+        page = self._ensure_page()
         logger.info("Attempting to pause story...")
         if not await self._check_story_viewer_open():
             return "Cannot pause story: Story viewer not open."
@@ -927,30 +487,43 @@ class InstagramServer:
         pause_selector = self.selectors["story_pause_button"]
         play_selector = self.selectors["story_play_button"]
 
-        play_locator = await self._get_locator(
-            play_selector, "Story play button (check pause)"
-        )
-        if play_locator and await play_locator.is_visible(timeout=500):
-            logger.info("Story is already paused (Play button visible).")
-            return "Story already paused."
+        try:
+            play_locator = page.locator(play_selector)
+            if await play_locator.is_visible(timeout=500):
+                logger.info("Story is already paused (Play button visible).")
+                return "Story already paused."
 
-        if await self.click_element(pause_selector, "Story pause button", timeout=3000):
-            await asyncio.sleep(0.3)
-            # Re-fetch locator for verification
-            play_locator_after = await self._get_locator(
-                play_selector, "Story play button (verify pause)"
-            )
-            if play_locator_after and await play_locator_after.is_visible(timeout=1000):
-                logger.info("Verified story paused (Play button appeared).")
-                return "Story paused successfully."
-            else:
-                logger.warning("Clicked pause, but Play button did not appear.")
-                return "Clicked pause, but verification failed."
-        else:
-            return "Could not find or click pause button."
+            logger.debug("Looking for pause button...")
+            pause_locator = page.locator(pause_selector)
+            await pause_locator.wait_for(state="visible", timeout=3000)
+            logger.debug("Pause button visible. Clicking...")
+            await pause_locator.click(timeout=3000)
+
+            await asyncio.sleep(0.3) # Wait for UI update
+
+            # Verify by checking if play button appeared
+            logger.debug("Verifying pause by looking for play button...")
+            await play_locator.wait_for(state="visible", timeout=1000)
+            logger.info("Verified story paused (Play button appeared).")
+            return "Story paused successfully."
+
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error during pause action: %s", e)
+            # Check if verification failed but action might have succeeded
+            try:
+                play_locator = page.locator(play_selector)
+                if await play_locator.is_visible(timeout=500):
+                    logger.warning("Pause confirmation timed out, but play button IS visible now.")
+                    return "Story likely paused, but confirmation timed out."
+            except: pass
+            return "Could not pause story or verify pause (Timeout)."
+        except Exception as e:
+            logger.error("Error pausing story: %s", e, exc_info=True)
+            return f"Error pausing story: {e}"
 
     async def resume_story(self) -> str:
-        # Logic looks okay, ensure selector usage is correct
+        # Refactored to use direct Playwright calls
+        page = self._ensure_page()
         logger.info("Attempting to resume story...")
         if not await self._check_story_viewer_open():
             return "Cannot resume story: Story viewer not open."
@@ -958,32 +531,43 @@ class InstagramServer:
         play_selector = self.selectors["story_play_button"]
         pause_selector = self.selectors["story_pause_button"]
 
-        pause_locator = await self._get_locator(
-            pause_selector, "Story pause button (check resume)"
-        )
-        if pause_locator and await pause_locator.is_visible(timeout=500):
-            logger.info("Story is already playing (Pause button visible).")
-            return "Story already playing."
+        try:
+            pause_locator = page.locator(pause_selector)
+            if await pause_locator.is_visible(timeout=500):
+                logger.info("Story is already playing (Pause button visible).")
+                return "Story already playing."
 
-        if await self.click_element(play_selector, "Story play button", timeout=3000):
-            await asyncio.sleep(0.3)
-            # Re-fetch locator for verification
-            pause_locator_after = await self._get_locator(
-                pause_selector, "Story pause button (verify resume)"
-            )
-            if pause_locator_after and await pause_locator_after.is_visible(
-                timeout=1000
-            ):
-                logger.info("Verified story resumed (Pause button appeared).")
-                return "Story resumed successfully."
-            else:
-                logger.warning("Clicked play, but Pause button did not appear.")
-                return "Clicked play, but verification failed."
-        else:
-            return "Could not find or click play button."
+            logger.debug("Looking for play button...")
+            play_locator = page.locator(play_selector)
+            await play_locator.wait_for(state="visible", timeout=3000)
+            logger.debug("Play button visible. Clicking...")
+            await play_locator.click(timeout=3000)
+
+            await asyncio.sleep(0.3) # Wait for UI update
+
+            # Verify by checking if pause button appeared
+            logger.debug("Verifying resume by looking for pause button...")
+            await pause_locator.wait_for(state="visible", timeout=1000)
+            logger.info("Verified story resumed (Pause button appeared).")
+            return "Story resumed successfully."
+
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error during resume action: %s", e)
+             # Check if verification failed but action might have succeeded
+            try:
+                pause_locator = page.locator(pause_selector)
+                if await pause_locator.is_visible(timeout=500):
+                    logger.warning("Resume confirmation timed out, but pause button IS visible now.")
+                    return "Story likely resumed, but confirmation timed out."
+            except: pass
+            return "Could not resume story or verify resume (Timeout)."
+        except Exception as e:
+            logger.error("Error resuming story: %s", e, exc_info=True)
+            return f"Error resuming story: {e}"
 
     async def like_story(self) -> str:
-        # Logic looks okay, ensure selector usage is correct
+        # Refactored to use direct Playwright calls
+        page = self._ensure_page()
         logger.info("Attempting to like current story...")
         if not await self._check_story_viewer_open():
             return "Cannot like story: Story viewer not open."
@@ -991,98 +575,113 @@ class InstagramServer:
         like_selector = self.selectors["story_like_button"]
         unlike_selector = self.selectors["story_unlike_button"]
 
-        unlike_locator = await self._get_locator(
-            unlike_selector, "Story unlike button (check like)"
-        )
-        if unlike_locator and await unlike_locator.is_visible(timeout=1000):
-            logger.warning(
-                "Story appears to be already liked (Unlike button/icon found)."
-            )
-            return "Story already liked."
+        try:
+            unlike_locator = page.locator(unlike_selector)
+            if await unlike_locator.is_visible(timeout=1000):
+                logger.warning(
+                    "Story appears to be already liked (Unlike button/icon found)."
+                )
+                return "Story already liked."
 
-        if await self.click_element(like_selector, "Story like button/icon"):
-            await asyncio.sleep(random.uniform(0.5, 1.0))
-            # Re-fetch locator for verification
-            unlike_locator_after = await self._get_locator(
-                unlike_selector, "Story unlike button (verify like)"
+            logger.debug("Looking for like button/icon...")
+            like_locator = page.locator(like_selector)
+            await like_locator.wait_for(state="visible", timeout=5000) # Wait for it
+            logger.debug("Like button/icon visible. Clicking...")
+            await like_locator.click(timeout=3000) # Click it
+
+            await asyncio.sleep(random.uniform(0.5, 1.0)) # Wait for UI update
+
+            # Verify by checking if unlike button appeared
+            logger.debug("Verifying like by looking for unlike button/icon...")
+            await unlike_locator.wait_for(state="visible", timeout=2000)
+            logger.info(
+                "Verified story liked successfully (Unlike button/icon appeared)."
             )
-            if unlike_locator_after and await unlike_locator_after.is_visible(
-                timeout=2000
-            ):
-                logger.info(
-                    "Verified story liked successfully (Unlike button/icon appeared)."
-                )
-                return "Story liked successfully."
-            else:
-                logger.warning("Clicked like, but Unlike button/icon did not appear.")
-                screenshot_verify_fail = await self.capture_screenshot(
-                    "story_like_verify_fail"
-                )
-                return f"Clicked like, but verification failed. Screenshot: {screenshot_verify_fail}"
-        else:
-            return "Could not find or click story like button/icon."
+            return "Story liked successfully."
+
+        except PlaywrightTimeoutError as e:
+            logger.error("Timeout error during story like action: %s", e)
+            # Check if verification failed but action might have succeeded
+            try:
+                unlike_locator = page.locator(unlike_selector)
+                if await unlike_locator.is_visible(timeout=500):
+                    logger.warning("Story like confirmation timed out, but unlike button IS visible now.")
+                    return "Story likely liked, but confirmation timed out."
+            except: pass
+            # Removed screenshot call
+            return "Could not like story or verify like (Timeout)."
+        except Exception as e:
+            logger.error("Error liking story: %s", e, exc_info=True)
+            # Removed screenshot call
+            return f"Error liking story: {e}"
 
     async def reply_to_story(self, reply_text: str) -> str:
-        # Logic looks okay, ensure selector usage is correct
+        # Replaced with provided implementation, added try/except and logging
+        page = self._ensure_page()
         logger.info(f"Attempting to reply to current story with text: '{reply_text}'")
         if not await self._check_story_viewer_open():
             return "Cannot reply to story: Story viewer not open."
 
-        reply_input_selector = self.selectors["story_reply_input"]
-
-        if not await self.type_into_element(
-            reply_input_selector, reply_text, "Story reply input"
-        ):
-            return "Could not find or type into story reply input."
-
         try:
+            reply_input_selector = self.selectors["story_reply_input"]
+            reply_input = page.locator(reply_input_selector)
+
+            await reply_input.wait_for(state="visible", timeout=10000)
+            logger.debug("Story reply input visible. Filling text...")
+            await reply_input.fill(reply_text) # Use fill()
+            logger.info("Filled story reply text.")
+
             await asyncio.sleep(random.uniform(0.3, 0.7))
-            await self.page.keyboard.press("Enter")
+            await page.keyboard.press("Enter")
             logger.info("Pressed Enter to send story reply.")
-            await asyncio.sleep(random.uniform(0.5, 1.0))
-            screenshot = await self.capture_screenshot("story_reply_sent")
-            return f"Story reply sent. Screenshot: {screenshot}"
+            await asyncio.sleep(random.uniform(0.5, 1.0)) # Short delay after sending
+
+            # Removed screenshot call
+            return "Story reply sent."
+        except PlaywrightTimeoutError as e:
+             logger.error("Timeout error during story reply action: %s", e)
+             # Removed screenshot call
+             return f"Error: Timeout during story reply - {e}"
         except Exception as e:
             logger.error(
-                "Error pressing Enter to send story reply: %s", e, exc_info=True
+                "Error replying to story: %s", e, exc_info=True
             )
-            screenshot = await self.capture_screenshot("story_reply_send_error")
-            return f"Error sending story reply: {e}. Screenshot: {screenshot}"
+            # Removed screenshot call
+            return f"Error sending story reply: {e}"
 
     async def close_story_viewer(self) -> str:
-        # Logic looks okay, ensure selector usage is correct
+        # Refactored to use direct Playwright calls
+        page = self._ensure_page()
         logger.info("Attempting to close story viewer...")
         if not await self._check_story_viewer_open():
+            # Log slightly differently if check returns false vs button not found later
+            logger.info("Story viewer check indicated it was already closed.")
             return "Story viewer was not open."
 
         close_button_selector = self.selectors["story_close_button"]
-        if await self.click_element(
-            close_button_selector, "Story close button", timeout=5000
-        ):
-            await asyncio.sleep(0.5)
-            try:
-                # Re-fetch locator for verification
-                story_dialog_locator = await self._get_locator(
-                    self.selectors["story_viewer_dialog"],
-                    "Story viewer dialog (verify close)",
-                )
-                if (
-                    not story_dialog_locator
-                    or not await story_dialog_locator.is_visible(timeout=2000)
-                ):
-                    logger.info("Verified story viewer closed.")
-                    return "Story viewer closed successfully."
-                else:
-                    logger.warning(
-                        "Clicked close, but story viewer still seems visible."
-                    )
-                    return "Clicked close button, but viewer may still be open."
-            except Exception:
-                # If locator check fails after clicking close, assume it closed successfully
-                logger.info(
-                    "Story viewer likely closed (verification check failed/element detached)."
-                )
-                return "Story viewer closed successfully."
-        else:
-            logger.error("Failed to find or click the story viewer close button.")
-            return "Failed to click close button."
+        try:
+            close_locator = page.locator(close_button_selector)
+            logger.debug("Looking for close button...")
+            await close_locator.wait_for(state="visible", timeout=5000)
+            logger.debug("Close button visible. Clicking...")
+            await close_locator.click(timeout=3000)
+
+            await asyncio.sleep(0.5) # Wait for close animation/state change
+
+            # Verify by checking if the viewer is NOT open anymore
+            if not await self._check_story_viewer_open():
+                 logger.info("Verified story viewer closed.")
+                 return "Story viewer closed successfully."
+            else:
+                 logger.warning("Clicked close, but story viewer still seems open.")
+                 # Attempt click again? Or just report failure.
+                 return "Clicked close button, but viewer may still be open."
+
+        except PlaywrightTimeoutError:
+            logger.error("Failed to find or click the story viewer close button (Timeout).")
+            # Removed screenshot call
+            return "Failed to click close button (Timeout)."
+        except Exception as e:
+            logger.error("Error closing story viewer: %s", e, exc_info=True)
+            # Removed screenshot call
+            return f"Error closing story viewer: {e}"
