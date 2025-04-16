@@ -244,7 +244,6 @@ class InstagramServer:
     # --- Post Actions ---
 
     async def like_post(self, post_url: Optional[str] = None) -> str:
-        # Replaced with provided implementation, added try/except
         page = self._ensure_page()
         action_description = (
             f"like post at {post_url}" if post_url else "like current post"
@@ -257,9 +256,6 @@ class InstagramServer:
                 await page.goto(post_url, wait_until="networkidle", timeout=45000)
                 logger.info("Page loaded for post: %s", post_url)
 
-            # Removed scroll simulation call
-            # await self.simulate_human_scroll(1, 1) # REMOVED
-
             like_btn = page.locator(self.selectors["post"]["like"])
             unlike_btn = page.locator(self.selectors["post"]["unlike"])
 
@@ -269,8 +265,14 @@ class InstagramServer:
                 return "Post already liked."
 
             logger.info("Looking for like button...")
-            await like_btn.wait_for(state="visible", timeout=10000) # Wait for button
-            logger.debug("Like button visible. Clicking...")
+            await like_btn.wait_for(state="visible", timeout=10000)
+
+            # Add hover before click
+            logger.debug("Hovering over like button...")
+            await like_btn.hover()
+            await asyncio.sleep(0.3)  # Short pause for UI stabilization
+
+            logger.debug("Clicking like button...")
             await like_btn.click(timeout=5000)
 
             # Wait for unlike button to appear as confirmation
