@@ -15,17 +15,15 @@ async def access_instagram() -> str:
     """Access Instagram homepage, ensuring the main feed content is loaded. Uses refresh if needed."""
     logger.info("Tool 'access_instagram' called.")
     await instagram.init()
-    page = instagram.page  # Assuming init sets self.page correctly
+    page = instagram.page # Ensure page is available after init
+
+    # Handle case where page might not be initialized (though init should raise)
+    if not page:
+        logger.error("Page object not initialized after init call.")
+        return "Error: Page object not initialized."
 
     target_url = "https://www.instagram.com/"
     main_content_selector = instagram.selectors["main_feed_content"]
-
-    # --- Get Locator using helper ---
-    main_content_locator = await instagram._get_locator(
-        main_content_selector, "Main feed content"
-    )
-    if not main_content_locator:
-        return "Error: Could not even create locator for main feed content."
 
     try:
         logger.info("Navigating to Instagram homepage: %s", target_url)
@@ -33,47 +31,35 @@ async def access_instagram() -> str:
         await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
         logger.info("Initial page load attempt done. Checking for main content...")
 
-        # --- Use locator-based wait ---
-        if await instagram.wait_for_locator(
-            main_content_locator, "Main feed content", timeout=15000
-        ):
+        # Create locator and wait directly
+        main_content = page.locator(main_content_selector)
+        try:
+            # Use wait_for directly on the locator
+            await main_content.wait_for(state="visible", timeout=15000)
             logger.info("Main content loaded on first try!")
-            await asyncio.sleep(random.uniform(0.5, 1.0))
-            screenshot_path = await instagram.capture_screenshot(
-                "homepage_loaded_first_try"
-            )
-            return (
-                f"Opened Instagram homepage successfully. Screenshot: {screenshot_path}"
-            )
-        else:
+            await asyncio.sleep(random.uniform(0.5, 1.0)) # Keep small delay
+            return "Opened Instagram homepage successfully."
+        except Exception: # Catch timeout or other errors during wait_for
             logger.info("Main content not found quickly. Attempting page refresh...")
-            await instagram.capture_screenshot("homepage_before_reload")
+            # No screenshot here
             await page.reload(wait_until="domcontentloaded", timeout=45000)
             logger.info("Page reloaded. Waiting for main content again...")
 
-            # --- Use locator-based wait again ---
-            if await instagram.wait_for_locator(
-                main_content_locator, "Main feed content", timeout=30000
-            ):
+            try:
+                # Wait again after reload
+                await main_content.wait_for(state="visible", timeout=30000)
                 logger.info("Refresh successful, main content loaded!")
-                await asyncio.sleep(random.uniform(0.5, 1.5))
-                screenshot_path = await instagram.capture_screenshot(
-                    "homepage_loaded_after_reload"
-                )
-                return f"Opened Instagram homepage successfully after refresh. Screenshot: {screenshot_path}"
-            else:
+                await asyncio.sleep(random.uniform(0.5, 1.5)) # Keep small delay
+                return "Opened Instagram homepage successfully after refresh."
+            except Exception: # Catch timeout or other errors on second wait
                 logger.error("Main content not found even after refresh.")
-                screenshot_path = await instagram.capture_screenshot(
-                    "homepage_failed_after_reload"
-                )
-                return f"Failed to load main content after refresh. Screenshot: {screenshot_path}"
+                # No screenshot here
+                return "Failed to load main content after refresh."
 
     except Exception as e:
         logger.error("Error accessing Instagram homepage: %s", e, exc_info=True)
-        screenshot_path = "Error capturing screenshot"
-        if instagram.page:
-            screenshot_path = await instagram.capture_screenshot("homepage_load_ERROR")
-        return f"Error accessing Instagram homepage: {e}. Screenshot: {screenshot_path}"
+        # No screenshot here
+        return f"Error accessing Instagram homepage: {e}"
 
 
 @mcp.tool()
@@ -217,34 +203,7 @@ async def scroll_instagram_feed(scrolls: int = 1) -> str:
         return f"Error during scroll: {e}"
 
 
-@mcp.tool()
-async def snapshot_instagram_page_tree() -> str:
-    """
-    Takes an accessibility snapshot of the *current* Instagram page and saves it
-    to a dynamically named file (e.g., page_snapshots/feed_timestamp.json) in the 'page_snapshots' directory.
-    """
-    logger.info("Tool 'snapshot_instagram_page_tree' called.")
-    await instagram.init()
-
-    current_url = instagram.page.url if instagram.page else "Unknown"
-
-    try:
-        snapshot_path = await instagram.snapshot_page_tree()
-        if snapshot_path:
-            result = f"Successfully saved accessibility snapshot of current page ({current_url}) to {snapshot_path}."
-            logger.info(result)
-            return result
-        else:
-            result = f"Failed to take accessibility snapshot for current page ({current_url}). Check logs for details."
-            logger.warning(result)
-            return result
-    except Exception as e:
-        logger.error(
-            "Unexpected error in 'snapshot_instagram_page_tree' tool: %s",
-            e,
-            exc_info=True,
-        )
-        return f"An unexpected error occurred while trying to take the snapshot: {e}"
+# Removed snapshot_instagram_page_tree tool
 
 
 @mcp.tool()
@@ -260,7 +219,7 @@ async def close_instagram() -> str:
 if __name__ == "__main__":
     logger.info("Starting Instagram MCP server...")
     # Ensure instagram instance is created before running MCP
-    instagram = InstagramServer()
+    # The global instance 'instagram' is already created above
     try:
         mcp.run(transport="stdio")
     except KeyboardInterrupt:
@@ -271,7 +230,7 @@ if __name__ == "__main__":
         logger.info("Executing final browser cleanup...")
 
         async def close_browser_sync():
-            # Use the global 'instagram' instance defined in __main__
+            # Use the global 'instagram' instance defined above
             if hasattr(instagram, "browser") and instagram.browser:
                 logger.info("Ensuring browser is closed on server exit...")
                 await instagram.close()
@@ -282,5 +241,6 @@ if __name__ == "__main__":
             # Prefer asyncio.run for simplicity if no loop is guaranteed running
             asyncio.run(close_browser_sync())
         except RuntimeError as e:
+            # This can happen if the event loop is already closed
             logger.info(f"Could not run final cleanup (loop likely stopped): {e}")
         logger.info("Instagram MCP server stopped.")
