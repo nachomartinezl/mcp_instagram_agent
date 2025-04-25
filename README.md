@@ -1,5 +1,14 @@
 ## 📡 `server.py` – Instagram Automation MCP Server
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&style=flat-square)](https://www.python.org/)
+[![Playwright](https://img.shields.io/badge/Automation-Playwright-45ba63?logo=microsoft&style=flat-square)](https://playwright.dev/)
+[![FastMCP](https://img.shields.io/badge/Agent-FastMCP-FFD700?style=flat-square)](https://github.com/juand-r/playwright-mcp)
+[![Gemini](https://img.shields.io/badge/LLM-Gemini-4285F4?logo=google&style=flat-square)](https://ai.google.dev/)
+[![Instagram](https://img.shields.io/badge/Automates-Instagram-E4405F?logo=instagram&style=flat-square)](https://instagram.com/)
+[![Logging Enabled](https://img.shields.io/badge/Logs-Enabled-brightgreen?style=flat-square)](instagram_server.log)
+[![Screenshots](https://img.shields.io/badge/Screenshots-Enabled-blueviolet?style=flat-square)](instagram_screenshots/)
+
 ### 🔧 What it does
 Runs a Playwright-based FastMCP server to control Instagram through a visible browser:
 - Opens stories and simulates viewing
